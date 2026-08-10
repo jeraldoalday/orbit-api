@@ -1,10 +1,13 @@
-from typing import List
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.models.mixins import TimestampMixin, UUIDPKMixin
+
+if TYPE_CHECKING:
+    from app.models.membership import Membership
 
 
 class User(UUIDPKMixin, TimestampMixin, Base):
@@ -15,7 +18,7 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     full_name: Mapped[str] = mapped_column(String(200), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
-    memberships: Mapped[List["Membership"]] = relationship(
+    memberships: Mapped[list["Membership"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 
