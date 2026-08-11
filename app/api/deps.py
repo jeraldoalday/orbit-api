@@ -1,5 +1,5 @@
 import uuid
-from typing import Optional
+from typing import Callable, Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -7,8 +7,12 @@ from sqlalchemy.orm import Session
 
 from app.core.security import InvalidTokenError, TokenType, decode_token
 from app.db.session import get_db
+from app.models.membership import Membership, MembershipRole
+from app.models.organization import Organization
 from app.models.user import User
 from app.services.auth_service import get_user_by_id
+from app.services.membership_service import get_membership
+from app.services.organization_service import get_organization
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
@@ -43,3 +47,44 @@ def get_current_active_user(current_user: User = Depends(get_current_user)) -> U
     if not current_user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
     return current_user
+
+
+ROLE_RANK = {
+    MembershipRole.MEMBER: 0,
+    MembershipRole.ADMIN: 1,
+    MembershipRole.OWNER: 2,
+}
+
+
+def get_organization_or_404(
+    org_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> Organization:
+    organization = get_organization(db, org_id)
+    if organization is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+    return organization
+
+
+def require_org_member(
+    organization: Organization = Depends(get_organization_or_404),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Membership:
+    membership = get_membership(db, organization.id, current_user.id)
+    if membership is None:
+        # Not a member: treat identically to a missing org so membership can't be probed.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+    return membership
+
+
+def require_org_role(minimum: MembershipRole) -> Callable[..., Membership]:
+    def dependency(membership: Membership = Depends(require_org_member)) -> Membership:
+        if ROLE_RANK[membership.role] < ROLE_RANK[minimum]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions for this organization",
+            )
+        return membership
+
+    return dependency
