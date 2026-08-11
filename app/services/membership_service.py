@@ -1,0 +1,96 @@
+import uuid
+from typing import Optional
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, joinedload
+
+from app.models.membership import Membership, MembershipRole
+from app.models.organization import Organization
+from app.services.auth_service import get_user_by_email
+
+
+class UserNotFoundError(Exception):
+    pass
+
+
+class AlreadyMemberError(Exception):
+    pass
+
+
+class LastOwnerError(Exception):
+    pass
+
+
+def get_membership(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> Optional[Membership]:
+    stmt = select(Membership).where(
+        Membership.organization_id == org_id, Membership.user_id == user_id
+    )
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def get_membership_by_id(
+    db: Session, org_id: uuid.UUID, membership_id: uuid.UUID
+) -> Optional[Membership]:
+    stmt = select(Membership).where(
+        Membership.organization_id == org_id, Membership.id == membership_id
+    )
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def list_memberships(db: Session, org_id: uuid.UUID) -> list[Membership]:
+    stmt = (
+        select(Membership)
+        .options(joinedload(Membership.user))
+        .where(Membership.organization_id == org_id)
+        .order_by(Membership.created_at)
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
+def count_owners(db: Session, org_id: uuid.UUID) -> int:
+    stmt = select(func.count()).where(
+        Membership.organization_id == org_id, Membership.role == MembershipRole.OWNER
+    )
+    return db.execute(stmt).scalar_one()
+
+
+def add_member(
+    db: Session, organization: Organization, email: str, role: MembershipRole
+) -> Membership:
+    user = get_user_by_email(db, email)
+    if user is None:
+        raise UserNotFoundError(f"No user is registered with email {email}")
+
+    if get_membership(db, organization.id, user.id) is not None:
+        raise AlreadyMemberError(f"{email} is already a member of this organization")
+
+    membership = Membership(organization_id=organization.id, user_id=user.id, role=role)
+    db.add(membership)
+    db.commit()
+    db.refresh(membership)
+    return membership
+
+
+def update_member_role(db: Session, membership: Membership, new_role: MembershipRole) -> Membership:
+    if (
+        membership.role == MembershipRole.OWNER
+        and new_role != MembershipRole.OWNER
+        and count_owners(db, membership.organization_id) <= 1
+    ):
+        raise LastOwnerError("Cannot demote the last remaining owner")
+
+    membership.role = new_role
+    db.commit()
+    db.refresh(membership)
+    return membership
+
+
+def remove_member(db: Session, membership: Membership) -> None:
+    if (
+        membership.role == MembershipRole.OWNER
+        and count_owners(db, membership.organization_id) <= 1
+    ):
+        raise LastOwnerError("Cannot remove the last remaining owner")
+
+    db.delete(membership)
+    db.commit()
