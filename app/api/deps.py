@@ -9,10 +9,14 @@ from app.core.security import InvalidTokenError, TokenType, decode_token
 from app.db.session import get_db
 from app.models.membership import Membership, MembershipRole
 from app.models.organization import Organization
+from app.models.project import Project
+from app.models.task import Task
 from app.models.user import User
 from app.services.auth_service import get_user_by_id
 from app.services.membership_service import get_membership
 from app.services.organization_service import get_organization
+from app.services.project_service import get_project
+from app.services.task_service import get_task
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
@@ -88,3 +92,25 @@ def require_org_role(minimum: MembershipRole) -> Callable[..., Membership]:
         return membership
 
     return dependency
+
+
+def get_project_or_404(
+    project_id: uuid.UUID,
+    organization: Organization = Depends(get_organization_or_404),
+    db: Session = Depends(get_db),
+) -> Project:
+    project = get_project(db, organization.id, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    return project
+
+
+def get_task_or_404(
+    task_id: uuid.UUID,
+    project: Project = Depends(get_project_or_404),
+    db: Session = Depends(get_db),
+) -> Task:
+    task = get_task(db, project.id, task_id)
+    if task is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    return task
