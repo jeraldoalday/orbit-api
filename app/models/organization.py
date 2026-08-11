@@ -8,6 +8,7 @@ from app.models.mixins import TimestampMixin, UUIDPKMixin
 
 if TYPE_CHECKING:
     from app.models.membership import Membership
+    from app.models.project import Project
 
 
 class Organization(UUIDPKMixin, TimestampMixin, Base):
@@ -17,6 +18,9 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     slug: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
 
     memberships: Mapped[list["Membership"]] = relationship(
+        back_populates="organization", cascade="all, delete-orphan"
+    )
+    projects: Mapped[list["Project"]] = relationship(
         back_populates="organization", cascade="all, delete-orphan"
     )
 
