@@ -1,3 +1,4 @@
+from app.models.invitation import Invitation, InvitationStatus
 from app.models.membership import Membership, MembershipRole
 from app.models.organization import Organization
 from app.models.project import Project
@@ -17,4 +18,6 @@ __all__ = [
     "TaskComment",
     "TaskActivity",
     "TaskActivityType",
+    "Invitation",
+    "InvitationStatus",
 ]

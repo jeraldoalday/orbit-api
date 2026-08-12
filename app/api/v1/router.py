@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.v1.routers import (
     auth,
     health,
+    invitations,
     memberships,
     organizations,
     projects,
@@ -20,3 +21,5 @@ api_router.include_router(memberships.router)
 api_router.include_router(projects.router)
 api_router.include_router(tasks.router)
 api_router.include_router(task_comments.router)
+api_router.include_router(invitations.router)
+api_router.include_router(invitations.accept_router)
