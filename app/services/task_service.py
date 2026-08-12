@@ -33,9 +33,10 @@ def create_task(db: Session, project: Project, task_in: TaskCreate, actor: User)
         assignee_id=task_in.assignee_id,
     )
     db.add(task)
+    db.flush()
+    record_activity(db, task.id, actor, TaskActivityType.CREATED, commit=False)
     db.commit()
     db.refresh(task)
-    record_activity(db, task.id, actor, TaskActivityType.CREATED)
     return task
 
 
@@ -73,11 +74,11 @@ def update_task(
         }
         task.assignee_id = task_in.assignee_id
 
+    if changes:
+        record_activity(db, task.id, actor, TaskActivityType.UPDATED, changes, commit=False)
+
     db.commit()
     db.refresh(task)
-
-    if changes:
-        record_activity(db, task.id, actor, TaskActivityType.UPDATED, changes)
 
     return task
 

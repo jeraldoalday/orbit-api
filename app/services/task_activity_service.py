@@ -14,6 +14,7 @@ def record_activity(
     actor: Optional[User],
     activity_type: TaskActivityType,
     data: Optional[dict[str, Any]] = None,
+    commit: bool = True,
 ) -> TaskActivity:
     activity = TaskActivity(
         task_id=task_id,
@@ -22,8 +23,9 @@ def record_activity(
         data=data,
     )
     db.add(activity)
-    db.commit()
-    db.refresh(activity)
+    if commit:
+        db.commit()
+        db.refresh(activity)
     return activity
 
 
