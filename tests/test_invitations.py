@@ -156,6 +156,96 @@ def test_accept_invitation_rejects_wrong_email(client):
     assert response.status_code == 403
 
 
+def test_admin_cannot_invite_owner_role(client):
+    owner_headers = _register_and_login(client, email="owner@example.com")
+    admin_headers = _register_and_login(client, email="admin@example.com")
+    org = _create_org(client, owner_headers)
+    client.post(
+        f"/api/v1/organizations/{org['id']}/members",
+        json={"email": "admin@example.com", "role": "admin"},
+        headers=owner_headers,
+    )
+
+    response = client.post(
+        _invitations_url(org["id"]),
+        json={"email": "newhire@example.com", "role": "owner"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 403
+
+
+def test_owner_can_invite_owner_role(client):
+    owner_headers = _register_and_login(client, email="owner@example.com")
+    org = _create_org(client, owner_headers)
+
+    response = client.post(
+        _invitations_url(org["id"]),
+        json={"email": "newhire@example.com", "role": "owner"},
+        headers=owner_headers,
+    )
+
+    assert response.status_code == 201
+
+
+def test_duplicate_invitation_rejected_regardless_of_email_case(client):
+    headers = _register_and_login(client, email="owner@example.com")
+    org = _create_org(client, headers)
+    client.post(
+        _invitations_url(org["id"]),
+        json={"email": "newhire@example.com", "role": "member"},
+        headers=headers,
+    )
+
+    response = client.post(
+        _invitations_url(org["id"]),
+        json={"email": "NewHire@Example.com", "role": "member"},
+        headers=headers,
+    )
+
+    assert response.status_code == 409
+
+
+def test_cannot_revoke_accepted_invitation(client):
+    owner_headers = _register_and_login(client, email="owner@example.com")
+    org = _create_org(client, owner_headers)
+    invitation = client.post(
+        _invitations_url(org["id"]),
+        json={"email": "newhire@example.com", "role": "member"},
+        headers=owner_headers,
+    ).json()
+    invitee_headers = _register_and_login(client, email="newhire@example.com")
+    client.post(
+        "/api/v1/invitations/accept", json={"token": invitation["token"]}, headers=invitee_headers
+    )
+
+    response = client.delete(
+        _invitations_url(org["id"], f"/{invitation['id']}"), headers=owner_headers
+    )
+
+    assert response.status_code == 409
+
+
+def test_cannot_accept_invitation_twice(client):
+    owner_headers = _register_and_login(client, email="owner@example.com")
+    org = _create_org(client, owner_headers)
+    invitation = client.post(
+        _invitations_url(org["id"]),
+        json={"email": "newhire@example.com", "role": "member"},
+        headers=owner_headers,
+    ).json()
+    invitee_headers = _register_and_login(client, email="newhire@example.com")
+    client.post(
+        "/api/v1/invitations/accept", json={"token": invitation["token"]}, headers=invitee_headers
+    )
+
+    response = client.post(
+        "/api/v1/invitations/accept", json={"token": invitation["token"]}, headers=invitee_headers
+    )
+
+    assert response.status_code == 409
+
+
 def test_accept_expired_invitation_rejected(client, db):
     owner_headers = _register_and_login(client, email="owner@example.com")
     org = _create_org(client, owner_headers)

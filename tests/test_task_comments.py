@@ -163,3 +163,44 @@ def test_timeline_merges_comments_and_activities(client):
 
     comment_entry = next(entry for entry in entries if entry["kind"] == "comment")
     assert comment_entry["comment"]["body"] == "Started work"
+
+
+def test_updating_multiple_fields_records_a_single_activity(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+    task = _create_task(client, headers, org["id"], project["id"])
+
+    client.patch(
+        _task_base(org["id"], project["id"], task["id"]),
+        json={"title": "Ship CI", "status": "in_progress"},
+        headers=headers,
+    )
+
+    response = client.get(
+        f"{_task_base(org['id'], project['id'], task['id'])}/timeline", headers=headers
+    )
+
+    activities = [entry for entry in response.json() if entry["kind"] == "activity"]
+    updated = [a for a in activities if a["activity"]["activity_type"] == "updated"]
+    assert len(updated) == 1
+    assert updated[0]["activity"]["data"] == {
+        "title": {"from": "Set up CI", "to": "Ship CI"},
+        "status": {"from": "todo", "to": "in_progress"},
+    }
+
+
+def test_outsider_cannot_access_comments_or_timeline(client):
+    owner_headers = _register_and_login(client, email="owner@example.com")
+    outsider_headers = _register_and_login(client, email="outsider@example.com")
+    org = _create_org(client, owner_headers)
+    project = _create_project(client, owner_headers, org["id"])
+    task = _create_task(client, owner_headers, org["id"], project["id"])
+
+    base = _task_base(org["id"], project["id"], task["id"])
+    assert client.get(f"{base}/comments", headers=outsider_headers).status_code == 404
+    assert (
+        client.post(f"{base}/comments", json={"body": "hi"}, headers=outsider_headers).status_code
+        == 404
+    )
+    assert client.get(f"{base}/timeline", headers=outsider_headers).status_code == 404
