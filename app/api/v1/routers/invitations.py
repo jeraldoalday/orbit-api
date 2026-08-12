@@ -85,7 +85,10 @@ def revoke(
     _membership: Membership = Depends(require_org_role(MembershipRole.ADMIN)),
 ) -> None:
     invitation = _get_invitation_or_404(db, organization, invitation_id)
-    revoke_invitation(db, invitation)
+    try:
+        revoke_invitation(db, invitation)
+    except InvalidInvitationError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @accept_router.post("/accept", response_model=MembershipRead)

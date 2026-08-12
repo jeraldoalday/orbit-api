@@ -109,6 +109,9 @@ def list_invitations(db: Session, org_id: uuid.UUID) -> list[Invitation]:
 
 
 def revoke_invitation(db: Session, invitation: Invitation) -> Invitation:
+    if invitation.status != InvitationStatus.PENDING:
+        raise InvalidInvitationError("Only a pending invitation can be revoked")
+
     invitation.status = InvitationStatus.REVOKED
     db.commit()
     db.refresh(invitation)
