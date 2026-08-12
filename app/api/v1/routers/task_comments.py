@@ -3,9 +3,9 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import ROLE_RANK, get_current_active_user, get_task_or_404, require_org_member
+from app.api.deps import get_current_active_user, get_task_or_404, require_org_member
 from app.db.session import get_db
-from app.models.membership import Membership, MembershipRole
+from app.models.membership import Membership, MembershipRole, role_at_least
 from app.models.task import Task
 from app.models.user import User
 from app.schemas.task_comment import TaskCommentCreate, TaskCommentRead
@@ -56,7 +56,7 @@ def delete(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
 
     is_author = comment.author_id == current_user.id
-    is_admin = ROLE_RANK[membership.role] >= ROLE_RANK[MembershipRole.ADMIN]
+    is_admin = role_at_least(membership.role, MembershipRole.ADMIN)
     if not is_author and not is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

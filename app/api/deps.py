@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import InvalidTokenError, TokenType, decode_token
 from app.db.session import get_db
-from app.models.membership import Membership, MembershipRole
+from app.models.membership import Membership, MembershipRole, role_at_least
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.task import Task
@@ -53,13 +53,6 @@ def get_current_active_user(current_user: User = Depends(get_current_user)) -> U
     return current_user
 
 
-ROLE_RANK = {
-    MembershipRole.MEMBER: 0,
-    MembershipRole.ADMIN: 1,
-    MembershipRole.OWNER: 2,
-}
-
-
 def get_organization_or_404(
     org_id: uuid.UUID,
     db: Session = Depends(get_db),
@@ -84,7 +77,7 @@ def require_org_member(
 
 def require_org_role(minimum: MembershipRole) -> Callable[..., Membership]:
     def dependency(membership: Membership = Depends(require_org_member)) -> Membership:
-        if ROLE_RANK[membership.role] < ROLE_RANK[minimum]:
+        if not role_at_least(membership.role, minimum):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions for this organization",

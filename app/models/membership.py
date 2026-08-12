@@ -20,6 +20,17 @@ class MembershipRole(str, enum.Enum):
     MEMBER = "member"
 
 
+ROLE_RANK = {
+    MembershipRole.MEMBER: 0,
+    MembershipRole.ADMIN: 1,
+    MembershipRole.OWNER: 2,
+}
+
+
+def role_at_least(role: MembershipRole, minimum: MembershipRole) -> bool:
+    return ROLE_RANK[role] >= ROLE_RANK[minimum]
+
+
 class Membership(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "memberships"
     __table_args__ = (

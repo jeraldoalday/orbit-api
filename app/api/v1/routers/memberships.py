@@ -3,9 +3,9 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import ROLE_RANK, get_organization_or_404, require_org_member, require_org_role
+from app.api.deps import get_organization_or_404, require_org_member, require_org_role
 from app.db.session import get_db
-from app.models.membership import Membership, MembershipRole
+from app.models.membership import Membership, MembershipRole, role_at_least
 from app.models.organization import Organization
 from app.schemas.membership import MembershipCreate, MembershipRead, MembershipRoleUpdate
 from app.services.membership_service import (
@@ -80,7 +80,7 @@ def remove(
     target = _get_target_membership_or_404(db, organization, membership_id)
 
     is_self = target.id == caller_membership.id
-    is_admin = ROLE_RANK[caller_membership.role] >= ROLE_RANK[MembershipRole.ADMIN]
+    is_admin = role_at_least(caller_membership.role, MembershipRole.ADMIN)
     if not is_self and not is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

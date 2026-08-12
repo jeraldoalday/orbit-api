@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.models.invitation import Invitation, InvitationStatus
-from app.models.membership import Membership, MembershipRole
+from app.models.membership import Membership, MembershipRole, role_at_least
 from app.models.organization import Organization
 from app.models.user import User
 from app.services.auth_service import get_user_by_email
@@ -33,6 +33,10 @@ class EmailMismatchError(Exception):
     pass
 
 
+class InsufficientRoleError(Exception):
+    pass
+
+
 def _active_invitation_for_email(
     db: Session, org_id: uuid.UUID, email: str
 ) -> Optional[Invitation]:
@@ -51,7 +55,15 @@ def create_invitation(
     email: str,
     role: MembershipRole,
     invited_by: User,
+    inviter_role: MembershipRole,
 ) -> Invitation:
+    if not role_at_least(inviter_role, role):
+        raise InsufficientRoleError(
+            f"Cannot invite a member with a role higher than your own ({inviter_role.value})"
+        )
+
+    email = email.strip().lower()
+
     existing_user = get_user_by_email(db, email)
     if existing_user is not None and get_membership(db, organization.id, existing_user.id):
         raise AlreadyMemberError(f"{email} is already a member of this organization")

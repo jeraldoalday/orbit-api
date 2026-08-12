@@ -21,6 +21,7 @@ from app.services.invitation_service import (
     DuplicateInvitationError,
     EmailMismatchError,
     ExpiredInvitationError,
+    InsufficientRoleError,
     InvalidInvitationError,
     accept_invitation,
     create_invitation,
@@ -52,12 +53,19 @@ def create(
 ) -> InvitationCreateResponse:
     try:
         return create_invitation(
-            db, organization, invitation_in.email, invitation_in.role, membership.user
+            db,
+            organization,
+            invitation_in.email,
+            invitation_in.role,
+            membership.user,
+            membership.role,
         )
     except AlreadyMemberError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except DuplicateInvitationError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except InsufficientRoleError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
 
 @router.get("", response_model=list[InvitationRead])
