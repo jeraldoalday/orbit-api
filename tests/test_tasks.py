@@ -161,6 +161,42 @@ def test_delete_task(client):
     )
 
 
+def test_member_cannot_delete_task(client):
+    owner_headers = _register_and_login(client, email="owner@example.com")
+    member_headers = _register_and_login(client, email="member@example.com")
+    org = _create_org(client, owner_headers)
+    client.post(
+        f"/api/v1/organizations/{org['id']}/members",
+        json={"email": "member@example.com", "role": "member"},
+        headers=owner_headers,
+    )
+    project = _create_project(client, owner_headers, org["id"])
+    task = client.post(
+        _tasks_url(org["id"], project["id"]), json={"title": "Set up CI"}, headers=owner_headers
+    ).json()
+
+    response = client.delete(
+        _tasks_url(org["id"], project["id"], f"/{task['id']}"), headers=member_headers
+    )
+
+    assert response.status_code == 403
+
+
+def test_admin_can_delete_task(client):
+    owner_headers = _register_and_login(client, email="owner@example.com")
+    org = _create_org(client, owner_headers)
+    project = _create_project(client, owner_headers, org["id"])
+    task = client.post(
+        _tasks_url(org["id"], project["id"]), json={"title": "Set up CI"}, headers=owner_headers
+    ).json()
+
+    response = client.delete(
+        _tasks_url(org["id"], project["id"], f"/{task['id']}"), headers=owner_headers
+    )
+
+    assert response.status_code == 204
+
+
 def test_task_not_found_for_wrong_project(client):
     headers = _register_and_login(client)
     org = _create_org(client, headers)
