@@ -288,6 +288,88 @@ def test_list_tasks_rejects_limit_over_max(client):
     assert response.status_code == 422
 
 
+def test_list_tasks_rejects_negative_offset(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+
+    response = client.get(_tasks_url(org["id"], project["id"], "?offset=-1"), headers=headers)
+
+    assert response.status_code == 422
+
+
+def test_list_tasks_rejects_invalid_status_filter(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+
+    response = client.get(
+        _tasks_url(org["id"], project["id"], "?status=not-a-status"), headers=headers
+    )
+
+    assert response.status_code == 422
+
+
+def test_list_tasks_rejects_invalid_sort_by(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+
+    response = client.get(
+        _tasks_url(org["id"], project["id"], "?sort_by=not-a-field"), headers=headers
+    )
+
+    assert response.status_code == 422
+
+
+def test_list_tasks_offset_past_end_returns_empty(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+    client.post(_tasks_url(org["id"], project["id"]), json={"title": "Only task"}, headers=headers)
+
+    response = client.get(
+        _tasks_url(org["id"], project["id"], "?limit=10&offset=5"), headers=headers
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_list_tasks_combines_status_and_assignee_filters(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+    user_id = client.get("/api/v1/users/me", headers=headers).json()["id"]
+    match = client.post(
+        _tasks_url(org["id"], project["id"]),
+        json={"title": "Assigned and done", "assignee_id": user_id},
+        headers=headers,
+    ).json()
+    client.patch(
+        _tasks_url(org["id"], project["id"], f"/{match['id']}"),
+        json={"status": "done"},
+        headers=headers,
+    )
+    unassigned_done = client.post(
+        _tasks_url(org["id"], project["id"]), json={"title": "Done, unassigned"}, headers=headers
+    ).json()
+    client.patch(
+        _tasks_url(org["id"], project["id"], f"/{unassigned_done['id']}"),
+        json={"status": "done"},
+        headers=headers,
+    )
+
+    response = client.get(
+        _tasks_url(org["id"], project["id"], f"?status=done&assignee_id={user_id}"),
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    ids = [t["id"] for t in response.json()]
+    assert ids == [match["id"]]
+
+
 def test_task_not_found_for_wrong_project(client):
     headers = _register_and_login(client)
     org = _create_org(client, headers)
