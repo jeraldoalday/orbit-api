@@ -14,6 +14,7 @@ env/
 htmlcov/
 .coverage
 .coverage.*
+test-results/
 dist/
 build/
 *.db

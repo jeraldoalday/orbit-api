@@ -28,4 +28,12 @@ jobs:
         run: ruff check .
 
       - name: Run tests
-        run: pytest --cov=app
+        run: pytest --cov=app --junitxml=test-results/junit.xml
+
+      - name: Publish test results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: pytest results
+          path: test-results/junit.xml
+          reporter: java-junit
