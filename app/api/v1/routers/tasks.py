@@ -11,6 +11,7 @@ from app.api.deps import (
     require_org_member,
     require_org_role,
 )
+from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.membership import Membership, MembershipRole
 from app.models.project import Project
@@ -24,6 +25,8 @@ from app.services.task_service import (
     list_tasks,
     update_task,
 )
+
+settings = get_settings()
 
 router = APIRouter(prefix="/organizations/{org_id}/projects/{project_id}/tasks", tags=["tasks"])
 
@@ -53,7 +56,9 @@ def list_mine(
     assignee_id: Optional[uuid.UUID] = None,
     sort_by: Literal["created_at", "title", "status"] = "created_at",
     order: Literal["asc", "desc"] = "asc",
-    limit: int = Query(default=50, ge=1, le=100),
+    limit: int = Query(
+        default=settings.task_list_default_limit, ge=1, le=settings.task_list_max_limit
+    ),
     offset: int = Query(default=0, ge=0),
 ) -> list[TaskRead]:
     return list_tasks(

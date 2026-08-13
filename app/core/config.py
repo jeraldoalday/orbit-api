@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 14
     invite_expire_days: int = 7
 
+    task_list_default_limit: int = 50
+    task_list_max_limit: int = 100
+
     cors_origins: Optional[str] = None
 
     @property
