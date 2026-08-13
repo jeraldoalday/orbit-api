@@ -1,5 +1,5 @@
 import uuid
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -51,8 +51,12 @@ def list_mine(
     _membership: Membership = Depends(require_org_member),
     status_: Optional[TaskStatus] = Query(default=None, alias="status"),
     assignee_id: Optional[uuid.UUID] = None,
+    sort_by: Literal["created_at", "title", "status"] = "created_at",
+    order: Literal["asc", "desc"] = "asc",
 ) -> list[TaskRead]:
-    return list_tasks(db, project.id, status=status_, assignee_id=assignee_id)
+    return list_tasks(
+        db, project.id, status=status_, assignee_id=assignee_id, sort_by=sort_by, order=order
+    )
 
 
 @router.get("/{task_id}", response_model=TaskRead)

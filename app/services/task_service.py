@@ -1,7 +1,7 @@
 import uuid
-from typing import Optional
+from typing import Literal, Optional
 
-from sqlalchemy import select
+from sqlalchemy import asc, desc, select
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
@@ -11,6 +11,14 @@ from app.models.user import User
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.services.membership_service import get_membership
 from app.services.task_activity_service import record_activity
+
+TaskSortField = Literal["created_at", "title", "status"]
+
+_SORT_COLUMNS: dict[str, object] = {
+    "created_at": Task.created_at,
+    "title": Task.title,
+    "status": Task.status,
+}
 
 
 class AssigneeNotMemberError(Exception):
@@ -51,6 +59,8 @@ def list_tasks(
     *,
     status: Optional[TaskStatus] = None,
     assignee_id: Optional[uuid.UUID] = None,
+    sort_by: TaskSortField = "created_at",
+    order: Literal["asc", "desc"] = "asc",
 ) -> list[Task]:
     stmt = select(Task).where(Task.project_id == project_id)
 
@@ -59,7 +69,9 @@ def list_tasks(
     if assignee_id is not None:
         stmt = stmt.where(Task.assignee_id == assignee_id)
 
-    stmt = stmt.order_by(Task.created_at, Task.id)
+    sort_column = _SORT_COLUMNS[sort_by]
+    direction = asc if order == "asc" else desc
+    stmt = stmt.order_by(direction(sort_column), Task.id)
 
     return list(db.execute(stmt).scalars().all())
 

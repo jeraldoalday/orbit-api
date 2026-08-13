@@ -244,6 +244,22 @@ def test_list_tasks_filters_by_assignee(client):
     assert ids == [assigned["id"]]
 
 
+def test_list_tasks_sorts_by_title_desc(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+    client.post(_tasks_url(org["id"], project["id"]), json={"title": "Alpha"}, headers=headers)
+    client.post(_tasks_url(org["id"], project["id"]), json={"title": "Bravo"}, headers=headers)
+
+    response = client.get(
+        _tasks_url(org["id"], project["id"], "?sort_by=title&order=desc"), headers=headers
+    )
+
+    assert response.status_code == 200
+    titles = [t["title"] for t in response.json()]
+    assert titles == ["Bravo", "Alpha"]
+
+
 def test_task_not_found_for_wrong_project(client):
     headers = _register_and_login(client)
     org = _create_org(client, headers)
