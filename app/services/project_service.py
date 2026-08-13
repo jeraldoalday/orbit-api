@@ -27,7 +27,11 @@ def get_project(db: Session, org_id: uuid.UUID, project_id: uuid.UUID) -> Option
 
 
 def list_projects(db: Session, org_id: uuid.UUID) -> list[Project]:
-    stmt = select(Project).where(Project.organization_id == org_id).order_by(Project.name)
+    stmt = (
+        select(Project)
+        .where(Project.organization_id == org_id)
+        .order_by(Project.name, Project.id)
+    )
     return list(db.execute(stmt).scalars().all())
 
 

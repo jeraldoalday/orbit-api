@@ -39,7 +39,7 @@ def list_organizations_for_user(db: Session, user_id: uuid.UUID) -> list[Organiz
         select(Organization)
         .join(Membership, Membership.organization_id == Organization.id)
         .where(Membership.user_id == user_id)
-        .order_by(Organization.name)
+        .order_by(Organization.name, Organization.id)
     )
     return list(db.execute(stmt).scalars().all())
 

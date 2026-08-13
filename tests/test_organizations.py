@@ -54,6 +54,19 @@ def test_list_organizations_returns_only_mine(client):
     assert names == ["A Corp"]
 
 
+def test_list_organizations_with_duplicate_names_orders_deterministically(client):
+    headers = _register_and_login(client)
+    first = _create_org(client, headers, name="Acme Inc").json()
+    second = _create_org(client, headers, name="Acme Inc").json()
+
+    first_response = client.get("/api/v1/organizations", headers=headers)
+    second_response = client.get("/api/v1/organizations", headers=headers)
+
+    ids = [org["id"] for org in first_response.json()]
+    assert set(ids) == {first["id"], second["id"]}
+    assert ids == [org["id"] for org in second_response.json()]
+
+
 def test_get_organization_requires_membership(client):
     owner_headers = _register_and_login(client, email="owner@example.com")
     outsider_headers = _register_and_login(client, email="outsider@example.com")

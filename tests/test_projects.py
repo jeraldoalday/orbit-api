@@ -56,6 +56,21 @@ def test_list_projects_scoped_to_organization(client):
     assert names == ["A Project"]
 
 
+def test_list_projects_with_duplicate_names_orders_deterministically(client):
+    owner_headers = _register_and_login(client, email="owner@example.com")
+    org = _create_org(client, owner_headers)
+    first = _create_project(client, owner_headers, org["id"], name="Untitled").json()
+    second = _create_project(client, owner_headers, org["id"], name="Untitled").json()
+    url = f"/api/v1/organizations/{org['id']}/projects"
+
+    first_response = client.get(url, headers=owner_headers)
+    second_response = client.get(url, headers=owner_headers)
+
+    ids = [p["id"] for p in first_response.json()]
+    assert set(ids) == {first["id"], second["id"]}
+    assert ids == [p["id"] for p in second_response.json()]
+
+
 def test_get_project_not_found(client):
     owner_headers = _register_and_login(client, email="owner@example.com")
     org = _create_org(client, owner_headers)
