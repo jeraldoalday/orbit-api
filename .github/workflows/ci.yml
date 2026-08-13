@@ -9,6 +9,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
     env:
       DATABASE_URL: postgresql+psycopg2://u:p@localhost:5432/db
       JWT_SECRET_KEY: ci-test-secret
@@ -27,13 +30,34 @@ jobs:
       - name: Lint
         run: ruff check .
 
-      - name: Run tests
-        run: pytest --cov=app --junitxml=test-results/junit.xml
+      - name: Run unit tests
+        run: >
+          pytest -m "not integration" --cov=app
+          --junitxml=test-results/unit-junit.xml
 
-      - name: Publish test results
+      - name: Run integration tests
+        run: pytest -m integration --junitxml=test-results/integration-junit.xml
+
+      - name: Publish unit test results
         uses: dorny/test-reporter@v1
         if: always()
         with:
-          name: pytest results
-          path: test-results/junit.xml
+          name: Unit test results
+          path: test-results/unit-junit.xml
           reporter: java-junit
+
+      - name: Publish integration test results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Integration test results
+          path: test-results/integration-junit.xml
+          reporter: java-junit
+
+      - name: Upload JUnit XML artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: junit-reports
+          path: test-results/*.xml
+          retention-days: 14

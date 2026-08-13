@@ -3,6 +3,10 @@ workflow, as opposed to the per-router tests elsewhere that each isolate a
 single feature.
 """
 
+import pytest
+
+pytestmark = pytest.mark.integration
+
 
 def _register_and_login(client, email, password="supersecret1", full_name="Test User"):
     client.post(

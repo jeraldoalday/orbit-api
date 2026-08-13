@@ -15,3 +15,6 @@ ignore = ["B008"]
 pythonpath = ["."]
 testpaths = ["tests"]
 junit_family = "xunit2"
+markers = [
+    "integration: full cross-module workflow tests, as opposed to single-router tests",
+]
