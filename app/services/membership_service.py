@@ -4,7 +4,7 @@ from typing import Optional
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.models.membership import Membership, MembershipRole
+from app.models.membership import Membership, MembershipRole, role_at_least
 from app.models.organization import Organization
 from app.services.auth_service import get_user_by_email
 
@@ -18,6 +18,10 @@ class AlreadyMemberError(Exception):
 
 
 class LastOwnerError(Exception):
+    pass
+
+
+class InsufficientRoleError(Exception):
     pass
 
 
@@ -55,8 +59,17 @@ def count_owners(db: Session, org_id: uuid.UUID) -> int:
 
 
 def add_member(
-    db: Session, organization: Organization, email: str, role: MembershipRole
+    db: Session,
+    organization: Organization,
+    email: str,
+    role: MembershipRole,
+    acting_role: MembershipRole,
 ) -> Membership:
+    if not role_at_least(acting_role, role):
+        raise InsufficientRoleError(
+            f"Cannot add a member with a role higher than your own ({acting_role.value})"
+        )
+
     user = get_user_by_email(db, email)
     if user is None:
         raise UserNotFoundError(f"No user is registered with email {email}")
@@ -71,7 +84,14 @@ def add_member(
     return membership
 
 
-def update_member_role(db: Session, membership: Membership, new_role: MembershipRole) -> Membership:
+def update_member_role(
+    db: Session, membership: Membership, new_role: MembershipRole, acting_role: MembershipRole
+) -> Membership:
+    if not role_at_least(acting_role, new_role):
+        raise InsufficientRoleError(
+            f"Cannot grant a role higher than your own ({acting_role.value})"
+        )
+
     if (
         membership.role == MembershipRole.OWNER
         and new_role != MembershipRole.OWNER

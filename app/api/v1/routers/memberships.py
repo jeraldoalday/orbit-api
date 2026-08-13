@@ -10,6 +10,7 @@ from app.models.organization import Organization
 from app.schemas.membership import MembershipCreate, MembershipRead, MembershipRoleUpdate
 from app.services.membership_service import (
     AlreadyMemberError,
+    InsufficientRoleError,
     LastOwnerError,
     UserNotFoundError,
     add_member,
@@ -45,14 +46,18 @@ def add(
     member_in: MembershipCreate,
     db: Session = Depends(get_db),
     organization: Organization = Depends(get_organization_or_404),
-    _membership: Membership = Depends(require_org_role(MembershipRole.ADMIN)),
+    caller_membership: Membership = Depends(require_org_role(MembershipRole.ADMIN)),
 ) -> MembershipRead:
     try:
-        return add_member(db, organization, member_in.email, member_in.role)
+        return add_member(
+            db, organization, member_in.email, member_in.role, caller_membership.role
+        )
     except UserNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except AlreadyMemberError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except InsufficientRoleError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
 
 @router.patch("/{membership_id}", response_model=MembershipRead)
@@ -61,13 +66,15 @@ def update_role(
     role_in: MembershipRoleUpdate,
     db: Session = Depends(get_db),
     organization: Organization = Depends(get_organization_or_404),
-    _membership: Membership = Depends(require_org_role(MembershipRole.ADMIN)),
+    caller_membership: Membership = Depends(require_org_role(MembershipRole.ADMIN)),
 ) -> MembershipRead:
     target = _get_target_membership_or_404(db, organization, membership_id)
     try:
-        return update_member_role(db, target, role_in.role)
+        return update_member_role(db, target, role_in.role, caller_membership.role)
     except LastOwnerError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except InsufficientRoleError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
 
 @router.delete("/{membership_id}", status_code=status.HTTP_204_NO_CONTENT)

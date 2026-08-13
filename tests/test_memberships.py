@@ -89,6 +89,70 @@ def test_add_existing_member_returns_409(client):
     assert response.status_code == 409
 
 
+def test_admin_cannot_add_member_as_owner(client):
+    owner_headers = _register_and_login(client, email="owner@example.com")
+    admin_headers = _register_and_login(client, email="admin@example.com")
+    _register_and_login(client, email="new@example.com")
+    org = _create_org(client, owner_headers)
+    client.post(
+        f"/api/v1/organizations/{org['id']}/members",
+        json={"email": "admin@example.com", "role": "admin"},
+        headers=owner_headers,
+    )
+
+    response = client.post(
+        f"/api/v1/organizations/{org['id']}/members",
+        json={"email": "new@example.com", "role": "owner"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 403
+
+
+def test_admin_cannot_promote_member_to_owner(client):
+    owner_headers = _register_and_login(client, email="owner@example.com")
+    admin_headers = _register_and_login(client, email="admin@example.com")
+    _register_and_login(client, email="member@example.com")
+    org = _create_org(client, owner_headers)
+    client.post(
+        f"/api/v1/organizations/{org['id']}/members",
+        json={"email": "admin@example.com", "role": "admin"},
+        headers=owner_headers,
+    )
+    member = client.post(
+        f"/api/v1/organizations/{org['id']}/members",
+        json={"email": "member@example.com", "role": "member"},
+        headers=owner_headers,
+    ).json()
+
+    response = client.patch(
+        f"/api/v1/organizations/{org['id']}/members/{member['id']}",
+        json={"role": "owner"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 403
+
+    members = client.get(f"/api/v1/organizations/{org['id']}/members", headers=owner_headers).json()
+    unchanged = next(m for m in members if m["id"] == member["id"])
+    assert unchanged["role"] == "member"
+
+
+def test_owner_can_add_member_as_owner(client):
+    owner_headers = _register_and_login(client, email="owner@example.com")
+    _register_and_login(client, email="new@example.com")
+    org = _create_org(client, owner_headers)
+
+    response = client.post(
+        f"/api/v1/organizations/{org['id']}/members",
+        json={"email": "new@example.com", "role": "owner"},
+        headers=owner_headers,
+    )
+
+    assert response.status_code == 201
+    assert response.json()["role"] == "owner"
+
+
 def test_update_member_role(client):
     owner_headers = _register_and_login(client, email="owner@example.com")
     org = _create_org(client, owner_headers)
