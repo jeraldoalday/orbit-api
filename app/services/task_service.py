@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
-from app.models.task import Task
+from app.models.task import Task, TaskStatus
 from app.models.task_activity import TaskActivityType
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskUpdate
@@ -45,8 +45,22 @@ def get_task(db: Session, project_id: uuid.UUID, task_id: uuid.UUID) -> Optional
     return db.execute(stmt).scalar_one_or_none()
 
 
-def list_tasks(db: Session, project_id: uuid.UUID) -> list[Task]:
-    stmt = select(Task).where(Task.project_id == project_id).order_by(Task.created_at)
+def list_tasks(
+    db: Session,
+    project_id: uuid.UUID,
+    *,
+    status: Optional[TaskStatus] = None,
+    assignee_id: Optional[uuid.UUID] = None,
+) -> list[Task]:
+    stmt = select(Task).where(Task.project_id == project_id)
+
+    if status is not None:
+        stmt = stmt.where(Task.status == status)
+    if assignee_id is not None:
+        stmt = stmt.where(Task.assignee_id == assignee_id)
+
+    stmt = stmt.order_by(Task.created_at, Task.id)
+
     return list(db.execute(stmt).scalars().all())
 
 

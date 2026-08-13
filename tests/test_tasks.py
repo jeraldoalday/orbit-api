@@ -197,6 +197,53 @@ def test_admin_can_delete_task(client):
     assert response.status_code == 204
 
 
+def test_list_tasks_filters_by_status(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+    todo = client.post(
+        _tasks_url(org["id"], project["id"]), json={"title": "Todo task"}, headers=headers
+    ).json()
+    done = client.post(
+        _tasks_url(org["id"], project["id"]), json={"title": "Done task"}, headers=headers
+    ).json()
+    client.patch(
+        _tasks_url(org["id"], project["id"], f"/{done['id']}"),
+        json={"status": "done"},
+        headers=headers,
+    )
+
+    response = client.get(_tasks_url(org["id"], project["id"], "?status=done"), headers=headers)
+
+    assert response.status_code == 200
+    ids = [t["id"] for t in response.json()]
+    assert ids == [done["id"]]
+    assert todo["id"] not in ids
+
+
+def test_list_tasks_filters_by_assignee(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+    user_id = client.get("/api/v1/users/me", headers=headers).json()["id"]
+    assigned = client.post(
+        _tasks_url(org["id"], project["id"]),
+        json={"title": "Assigned task", "assignee_id": user_id},
+        headers=headers,
+    ).json()
+    client.post(
+        _tasks_url(org["id"], project["id"]), json={"title": "Unassigned task"}, headers=headers
+    )
+
+    response = client.get(
+        _tasks_url(org["id"], project["id"], f"?assignee_id={user_id}"), headers=headers
+    )
+
+    assert response.status_code == 200
+    ids = [t["id"] for t in response.json()]
+    assert ids == [assigned["id"]]
+
+
 def test_task_not_found_for_wrong_project(client):
     headers = _register_and_login(client)
     org = _create_org(client, headers)

@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import uuid
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
@@ -11,7 +14,7 @@ from app.api.deps import (
 from app.db.session import get_db
 from app.models.membership import Membership, MembershipRole
 from app.models.project import Project
-from app.models.task import Task
+from app.models.task import Task, TaskStatus
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskRead, TaskUpdate
 from app.services.task_service import (
@@ -46,8 +49,10 @@ def list_mine(
     db: Session = Depends(get_db),
     project: Project = Depends(get_project_or_404),
     _membership: Membership = Depends(require_org_member),
+    status_: Optional[TaskStatus] = Query(default=None, alias="status"),
+    assignee_id: Optional[uuid.UUID] = None,
 ) -> list[TaskRead]:
-    return list_tasks(db, project.id)
+    return list_tasks(db, project.id, status=status_, assignee_id=assignee_id)
 
 
 @router.get("/{task_id}", response_model=TaskRead)
