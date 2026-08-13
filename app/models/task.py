@@ -30,12 +30,15 @@ class Task(UUIDPKMixin, TimestampMixin, Base):
         index=True,
     )
     assignee_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[TaskStatus] = mapped_column(
-        Enum(TaskStatus, name="task_status"), nullable=False, default=TaskStatus.TODO
+        Enum(TaskStatus, name="task_status"), nullable=False, default=TaskStatus.TODO, index=True
     )
 
     project: Mapped["Project"] = relationship(back_populates="tasks")
