@@ -61,6 +61,8 @@ def list_tasks(
     assignee_id: Optional[uuid.UUID] = None,
     sort_by: TaskSortField = "created_at",
     order: Literal["asc", "desc"] = "asc",
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[Task]:
     stmt = select(Task).where(Task.project_id == project_id)
 
@@ -72,6 +74,8 @@ def list_tasks(
     sort_column = _SORT_COLUMNS[sort_by]
     direction = asc if order == "asc" else desc
     stmt = stmt.order_by(direction(sort_column), Task.id)
+
+    stmt = stmt.limit(limit).offset(offset)
 
     return list(db.execute(stmt).scalars().all())
 

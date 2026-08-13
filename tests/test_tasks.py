@@ -260,6 +260,34 @@ def test_list_tasks_sorts_by_title_desc(client):
     assert titles == ["Bravo", "Alpha"]
 
 
+def test_list_tasks_paginates_with_limit_and_offset(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+    for title in ["Task 1", "Task 2", "Task 3"]:
+        client.post(_tasks_url(org["id"], project["id"]), json={"title": title}, headers=headers)
+
+    first_page = client.get(
+        _tasks_url(org["id"], project["id"], "?limit=2&offset=0"), headers=headers
+    )
+    second_page = client.get(
+        _tasks_url(org["id"], project["id"], "?limit=2&offset=2"), headers=headers
+    )
+
+    assert [t["title"] for t in first_page.json()] == ["Task 1", "Task 2"]
+    assert [t["title"] for t in second_page.json()] == ["Task 3"]
+
+
+def test_list_tasks_rejects_limit_over_max(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+
+    response = client.get(_tasks_url(org["id"], project["id"], "?limit=101"), headers=headers)
+
+    assert response.status_code == 422
+
+
 def test_task_not_found_for_wrong_project(client):
     headers = _register_and_login(client)
     org = _create_org(client, headers)

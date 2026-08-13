@@ -53,9 +53,18 @@ def list_mine(
     assignee_id: Optional[uuid.UUID] = None,
     sort_by: Literal["created_at", "title", "status"] = "created_at",
     order: Literal["asc", "desc"] = "asc",
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
 ) -> list[TaskRead]:
     return list_tasks(
-        db, project.id, status=status_, assignee_id=assignee_id, sort_by=sort_by, order=order
+        db,
+        project.id,
+        status=status_,
+        assignee_id=assignee_id,
+        sort_by=sort_by,
+        order=order,
+        limit=limit,
+        offset=offset,
     )
 
 
