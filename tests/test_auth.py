@@ -25,6 +25,20 @@ def test_register_duplicate_email_is_rejected(client):
     assert response.status_code == 409
 
 
+def test_register_normalizes_email_case(client):
+    response = _register(client, email="  Jane@Example.com  ")
+
+    assert response.status_code == 201
+    assert response.json()["email"] == "jane@example.com"
+
+
+def test_register_duplicate_email_is_rejected_case_insensitively(client):
+    _register(client, email="jane@example.com")
+    response = _register(client, email="JANE@EXAMPLE.COM")
+
+    assert response.status_code == 409
+
+
 def test_register_rejects_short_password(client):
     response = _register(client, password="short")
 
@@ -44,6 +58,18 @@ def test_login_returns_tokens(client):
     assert body["token_type"] == "bearer"
     assert body["access_token"]
     assert body["refresh_token"]
+
+
+def test_login_is_case_insensitive_on_email(client):
+    _register(client, email="jane@example.com")
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "Jane@Example.com", "password": "supersecret1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["access_token"]
 
 
 def test_login_with_wrong_password_is_rejected(client):

@@ -18,7 +18,7 @@ class InvalidCredentialsError(Exception):
 
 
 def get_user_by_email(db: Session, email: str) -> Optional[User]:
-    stmt = select(User).where(User.email == email)
+    stmt = select(User).where(User.email == email.strip().lower())
     return db.execute(stmt).scalar_one_or_none()
 
 
@@ -27,11 +27,13 @@ def get_user_by_id(db: Session, user_id: uuid.UUID) -> Optional[User]:
 
 
 def create_user(db: Session, user_in: UserCreate) -> User:
-    if get_user_by_email(db, user_in.email) is not None:
-        raise EmailAlreadyRegisteredError(f"{user_in.email} is already registered")
+    email = user_in.email.strip().lower()
+
+    if get_user_by_email(db, email) is not None:
+        raise EmailAlreadyRegisteredError(f"{email} is already registered")
 
     user = User(
-        email=user_in.email,
+        email=email,
         hashed_password=hash_password(user_in.password),
         full_name=user_in.full_name,
     )
