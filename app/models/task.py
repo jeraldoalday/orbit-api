@@ -11,6 +11,7 @@ from app.db.base import Base
 from app.models.mixins import TimestampMixin, UUIDPKMixin
 
 if TYPE_CHECKING:
+    from app.models.label import Label
     from app.models.project import Project
     from app.models.user import User
 
@@ -60,6 +61,9 @@ class Task(UUIDPKMixin, TimestampMixin, Base):
 
     project: Mapped["Project"] = relationship(back_populates="tasks")
     assignee: Mapped[Optional["User"]] = relationship()
+    labels: Mapped[list["Label"]] = relationship(
+        secondary="task_labels", back_populates="tasks", viewonly=True
+    )
 
     def __repr__(self) -> str:
         return f"<Task id={self.id} title={self.title!r} status={self.status}>"

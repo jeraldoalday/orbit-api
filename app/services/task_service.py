@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.models.project import Project
 from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.task_activity import TaskActivityType
+from app.models.task_label import TaskLabel
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.services.membership_service import get_membership
@@ -79,6 +80,7 @@ def list_tasks(
     priority: Optional[TaskPriority] = None,
     due_before: Optional[datetime] = None,
     due_after: Optional[datetime] = None,
+    label_id: Optional[uuid.UUID] = None,
     sort_by: TaskSortField = "created_at",
     order: Literal["asc", "desc"] = "asc",
     limit: int = 50,
@@ -96,6 +98,10 @@ def list_tasks(
         stmt = stmt.where(Task.due_date <= due_before)
     if due_after is not None:
         stmt = stmt.where(Task.due_date >= due_after)
+    if label_id is not None:
+        stmt = stmt.join(TaskLabel, TaskLabel.task_id == Task.id).where(
+            TaskLabel.label_id == label_id
+        )
 
     sort_column = _SORT_COLUMNS[sort_by]
     direction = asc if order == "asc" else desc

@@ -58,6 +58,7 @@ def list_mine(
     priority: Optional[TaskPriority] = None,
     due_before: Optional[datetime] = None,
     due_after: Optional[datetime] = None,
+    label_id: Optional[uuid.UUID] = None,
     sort_by: Literal["created_at", "title", "status", "priority", "due_date"] = "created_at",
     order: Literal["asc", "desc"] = "asc",
     limit: int = Query(
@@ -73,6 +74,7 @@ def list_mine(
         priority=priority,
         due_before=due_before,
         due_after=due_after,
+        label_id=label_id,
         sort_by=sort_by,
         order=order,
         limit=limit,

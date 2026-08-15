@@ -7,12 +7,14 @@ from sqlalchemy.orm import Session
 
 from app.core.security import InvalidTokenError, TokenType, decode_token
 from app.db.session import get_db
+from app.models.label import Label
 from app.models.membership import Membership, MembershipRole, role_at_least
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.task import Task
 from app.models.user import User
 from app.services.auth_service import get_user_by_id
+from app.services.label_service import get_label
 from app.services.membership_service import get_membership
 from app.services.organization_service import get_organization
 from app.services.project_service import get_project
@@ -107,3 +109,14 @@ def get_task_or_404(
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     return task
+
+
+def get_label_or_404(
+    label_id: uuid.UUID,
+    organization: Organization = Depends(get_organization_or_404),
+    db: Session = Depends(get_db),
+) -> Label:
+    label = get_label(db, organization.id, label_id)
+    if label is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Label not found")
+    return label
