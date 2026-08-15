@@ -1,3 +1,6 @@
+from datetime import datetime
+
+
 def _register_and_login(
     client, email="jane@example.com", password="supersecret1", full_name="Jane Doe"
 ):
@@ -22,6 +25,12 @@ def _create_project(client, headers, org_id, name="Website Revamp"):
 
 def _tasks_url(org_id, project_id, suffix=""):
     return f"/api/v1/organizations/{org_id}/projects/{project_id}/tasks{suffix}"
+
+
+def _parse_dt(value):
+    # The SQLite test backend doesn't round-trip UTC offsets, so compare naive
+    # timestamps rather than raw strings (Postgres preserves the offset in prod).
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
 
 
 def test_create_task_defaults_to_todo(client):
@@ -368,6 +377,169 @@ def test_list_tasks_combines_status_and_assignee_filters(client):
     assert response.status_code == 200
     ids = [t["id"] for t in response.json()]
     assert ids == [match["id"]]
+
+
+def test_create_task_defaults_to_medium_priority(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+
+    response = client.post(
+        _tasks_url(org["id"], project["id"]), json={"title": "Set up CI"}, headers=headers
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["priority"] == "medium"
+    assert body["due_date"] is None
+
+
+def test_create_task_with_priority_and_due_date(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+
+    response = client.post(
+        _tasks_url(org["id"], project["id"]),
+        json={
+            "title": "Ship release",
+            "priority": "urgent",
+            "due_date": "2026-09-01T00:00:00Z",
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["priority"] == "urgent"
+    assert _parse_dt(body["due_date"]) == _parse_dt("2026-09-01T00:00:00Z")
+
+
+def test_update_task_priority_and_due_date(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+    task = client.post(
+        _tasks_url(org["id"], project["id"]), json={"title": "Set up CI"}, headers=headers
+    ).json()
+
+    response = client.patch(
+        _tasks_url(org["id"], project["id"], f"/{task['id']}"),
+        json={"priority": "high", "due_date": "2026-10-15T12:00:00Z"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["priority"] == "high"
+    assert _parse_dt(body["due_date"]) == _parse_dt("2026-10-15T12:00:00Z")
+
+
+def test_update_task_can_clear_due_date(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+    task = client.post(
+        _tasks_url(org["id"], project["id"]),
+        json={"title": "Set up CI", "due_date": "2026-09-01T00:00:00Z"},
+        headers=headers,
+    ).json()
+
+    response = client.patch(
+        _tasks_url(org["id"], project["id"], f"/{task['id']}"),
+        json={"due_date": None},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["due_date"] is None
+
+
+def test_list_tasks_filters_by_priority(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+    urgent = client.post(
+        _tasks_url(org["id"], project["id"]),
+        json={"title": "Urgent task", "priority": "urgent"},
+        headers=headers,
+    ).json()
+    client.post(
+        _tasks_url(org["id"], project["id"]), json={"title": "Normal task"}, headers=headers
+    )
+
+    response = client.get(_tasks_url(org["id"], project["id"], "?priority=urgent"), headers=headers)
+
+    assert response.status_code == 200
+    ids = [t["id"] for t in response.json()]
+    assert ids == [urgent["id"]]
+
+
+def test_list_tasks_filters_by_due_date_range(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+    early = client.post(
+        _tasks_url(org["id"], project["id"]),
+        json={"title": "Early", "due_date": "2026-01-01T00:00:00Z"},
+        headers=headers,
+    ).json()
+    client.post(
+        _tasks_url(org["id"], project["id"]),
+        json={"title": "Late", "due_date": "2026-12-01T00:00:00Z"},
+        headers=headers,
+    )
+    client.post(
+        _tasks_url(org["id"], project["id"]), json={"title": "No due date"}, headers=headers
+    )
+
+    response = client.get(
+        _tasks_url(
+            org["id"],
+            project["id"],
+            "?due_before=2026-06-01T00:00:00Z",
+        ),
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    ids = [t["id"] for t in response.json()]
+    assert ids == [early["id"]]
+
+
+def test_list_tasks_sorts_by_priority_rank_not_alphabetically(client):
+    # "high" sorts before "low" alphabetically, so this only passes if sorting
+    # uses urgency rank (low < medium < high < urgent) rather than the raw string.
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+    priorities = [("Low", "low"), ("Urgent", "urgent"), ("High", "high"), ("Medium", "medium")]
+    for title, priority in priorities:
+        client.post(
+            _tasks_url(org["id"], project["id"]),
+            json={"title": title, "priority": priority},
+            headers=headers,
+        )
+
+    response = client.get(
+        _tasks_url(org["id"], project["id"], "?sort_by=priority&order=desc"), headers=headers
+    )
+
+    assert response.status_code == 200
+    titles = [t["title"] for t in response.json()]
+    assert titles == ["Urgent", "High", "Medium", "Low"]
+
+
+def test_list_tasks_rejects_invalid_priority_filter(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+
+    response = client.get(
+        _tasks_url(org["id"], project["id"], "?priority=not-a-priority"), headers=headers
+    )
+
+    assert response.status_code == 422
 
 
 def test_task_not_found_for_wrong_project(client):

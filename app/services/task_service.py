@@ -1,23 +1,38 @@
 import uuid
+from datetime import datetime
 from typing import Literal, Optional
 
-from sqlalchemy import asc, desc, select
+from sqlalchemy import asc, case, desc, select
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
-from app.models.task import Task, TaskStatus
+from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.task_activity import TaskActivityType
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.services.membership_service import get_membership
 from app.services.task_activity_service import record_activity
 
-TaskSortField = Literal["created_at", "title", "status"]
+TaskSortField = Literal["created_at", "title", "status", "priority", "due_date"]
+
+# Priorities sort by urgency rank rather than the enum's stored name, since
+# alphabetical order ("HIGH" < "LOW" < "MEDIUM" < "URGENT") doesn't match it.
+_PRIORITY_RANK = {
+    TaskPriority.LOW: 0,
+    TaskPriority.MEDIUM: 1,
+    TaskPriority.HIGH: 2,
+    TaskPriority.URGENT: 3,
+}
+_PRIORITY_SORT_EXPRESSION = case(
+    *[(Task.priority == priority, rank) for priority, rank in _PRIORITY_RANK.items()]
+)
 
 _SORT_COLUMNS: dict[str, object] = {
     "created_at": Task.created_at,
     "title": Task.title,
     "status": Task.status,
+    "priority": _PRIORITY_SORT_EXPRESSION,
+    "due_date": Task.due_date,
 }
 
 
@@ -39,6 +54,8 @@ def create_task(db: Session, project: Project, task_in: TaskCreate, actor: User)
         title=task_in.title,
         description=task_in.description,
         assignee_id=task_in.assignee_id,
+        priority=task_in.priority,
+        due_date=task_in.due_date,
     )
     db.add(task)
     db.flush()
@@ -59,6 +76,9 @@ def list_tasks(
     *,
     status: Optional[TaskStatus] = None,
     assignee_id: Optional[uuid.UUID] = None,
+    priority: Optional[TaskPriority] = None,
+    due_before: Optional[datetime] = None,
+    due_after: Optional[datetime] = None,
     sort_by: TaskSortField = "created_at",
     order: Literal["asc", "desc"] = "asc",
     limit: int = 50,
@@ -70,6 +90,12 @@ def list_tasks(
         stmt = stmt.where(Task.status == status)
     if assignee_id is not None:
         stmt = stmt.where(Task.assignee_id == assignee_id)
+    if priority is not None:
+        stmt = stmt.where(Task.priority == priority)
+    if due_before is not None:
+        stmt = stmt.where(Task.due_date <= due_before)
+    if due_after is not None:
+        stmt = stmt.where(Task.due_date >= due_after)
 
     sort_column = _SORT_COLUMNS[sort_by]
     direction = asc if order == "asc" else desc
@@ -95,6 +121,15 @@ def update_task(
     if task_in.status is not None and task_in.status != task.status:
         changes["status"] = {"from": task.status.value, "to": task_in.status.value}
         task.status = task_in.status
+    if task_in.priority is not None and task_in.priority != task.priority:
+        changes["priority"] = {"from": task.priority.value, "to": task_in.priority.value}
+        task.priority = task_in.priority
+    if "due_date" in fields_set and task_in.due_date != task.due_date:
+        changes["due_date"] = {
+            "from": task.due_date.isoformat() if task.due_date else None,
+            "to": task_in.due_date.isoformat() if task_in.due_date else None,
+        }
+        task.due_date = task_in.due_date
     if "assignee_id" in fields_set and task_in.assignee_id != task.assignee_id:
         if task_in.assignee_id is not None:
             _check_assignee_is_member(db, project, task_in.assignee_id)

@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -15,7 +16,7 @@ from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.membership import Membership, MembershipRole
 from app.models.project import Project
-from app.models.task import Task, TaskStatus
+from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskRead, TaskUpdate
 from app.services.task_service import (
@@ -54,7 +55,10 @@ def list_mine(
     _membership: Membership = Depends(require_org_member),
     status_: Optional[TaskStatus] = Query(default=None, alias="status"),
     assignee_id: Optional[uuid.UUID] = None,
-    sort_by: Literal["created_at", "title", "status"] = "created_at",
+    priority: Optional[TaskPriority] = None,
+    due_before: Optional[datetime] = None,
+    due_after: Optional[datetime] = None,
+    sort_by: Literal["created_at", "title", "status", "priority", "due_date"] = "created_at",
     order: Literal["asc", "desc"] = "asc",
     limit: int = Query(
         default=settings.task_list_default_limit, ge=1, le=settings.task_list_max_limit
@@ -66,6 +70,9 @@ def list_mine(
         project.id,
         status=status_,
         assignee_id=assignee_id,
+        priority=priority,
+        due_before=due_before,
+        due_after=due_after,
         sort_by=sort_by,
         order=order,
         limit=limit,
