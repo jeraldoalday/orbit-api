@@ -37,14 +37,14 @@ pytest
 - **Day 1:** Scaffolding, config, DB/Alembic wiring, User/Org/Membership models, JWT auth (register/login/refresh/me), health check, CI, auth tests.
 - **Day 2:** Org-scoped auth deps, organizations & memberships routers, Project/Task models + migration, project/task schemas/services/routers, flow tests.
 - **Day 3:** Task comments, activity timeline, admin-gated task delete, org invitations (create/accept/revoke), invitation privilege-escalation fixes, centralized role ranking, atomic activity logging, guard tests.
+- **Day 4:** Task list filtering (status, assignee), sorting, and pagination, with configurable limits and edge-case tests.
+- **Day 5:** Task priority (low/medium/high/urgent) and due date fields, with filtering (priority, due_before/after) and rank-based priority sorting.
+- **Day 6:** Labels/tags — org-scoped Label model, attach/detach endpoints per task, filter task list by label, cascade-detach on label delete.
 
 ### Upcoming
 
 | Day | Feature |
 |---|---|
-| 4 | Task list filtering, sorting, and pagination (by status, assignee, project) |
-| 5 | Task due dates + priority field, with filtering/sorting on them |
-| 6 | Labels/tags — many-to-many model, attach/detach, filter tasks by label |
 | 7 | Project-level membership — invite specific users to a project, scope permissions below org role |
 | 8 | In-app notifications (assignment, comment, mention) — model + list/mark-read endpoints |
 | 9 | Full-text search across tasks/projects (Postgres tsvector) |
