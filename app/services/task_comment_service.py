@@ -17,9 +17,7 @@ def create_comment(db: Session, task_id: uuid.UUID, author: User, body: str) -> 
 
 
 def get_comment(db: Session, task_id: uuid.UUID, comment_id: uuid.UUID) -> Optional[TaskComment]:
-    stmt = select(TaskComment).where(
-        TaskComment.id == comment_id, TaskComment.task_id == task_id
-    )
+    stmt = select(TaskComment).where(TaskComment.id == comment_id, TaskComment.task_id == task_id)
     return db.execute(stmt).scalar_one_or_none()
 
 
@@ -28,7 +26,7 @@ def list_comments(db: Session, task_id: uuid.UUID) -> list[TaskComment]:
         select(TaskComment)
         .options(joinedload(TaskComment.author))
         .where(TaskComment.task_id == task_id)
-        .order_by(TaskComment.created_at)
+        .order_by(TaskComment.created_at, TaskComment.id)
     )
     return list(db.execute(stmt).scalars().all())
 

@@ -33,6 +33,6 @@ def list_activities(db: Session, task_id: uuid.UUID) -> list[TaskActivity]:
     stmt = (
         select(TaskActivity)
         .where(TaskActivity.task_id == task_id)
-        .order_by(TaskActivity.created_at)
+        .order_by(TaskActivity.created_at, TaskActivity.id)
     )
     return list(db.execute(stmt).scalars().all())

@@ -55,6 +55,34 @@ def test_create_and_list_comments(client):
     assert len(list_response.json()) == 1
 
 
+def test_list_comments_with_tied_timestamps_orders_deterministically(client, monkeypatch):
+    import app.models.mixins as mixins
+
+    class _FixedDatetime(mixins.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return mixins.datetime(2026, 1, 1, tzinfo=mixins.timezone.utc)
+
+    monkeypatch.setattr(mixins, "datetime", _FixedDatetime)
+
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+    task = _create_task(client, headers, org["id"], project["id"])
+    base = _task_base(org["id"], project["id"], task["id"])
+
+    first = client.post(f"{base}/comments", json={"body": "First"}, headers=headers).json()
+    second = client.post(f"{base}/comments", json={"body": "Second"}, headers=headers).json()
+    assert first["created_at"] == second["created_at"]
+
+    first_listing = client.get(f"{base}/comments", headers=headers).json()
+    second_listing = client.get(f"{base}/comments", headers=headers).json()
+
+    ids = [c["id"] for c in first_listing]
+    assert ids == [first["id"], second["id"]]
+    assert ids == [c["id"] for c in second_listing]
+
+
 def test_author_can_delete_own_comment(client):
     headers = _register_and_login(client)
     org = _create_org(client, headers)
