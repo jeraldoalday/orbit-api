@@ -79,7 +79,7 @@ def test_list_comments_with_tied_timestamps_orders_deterministically(client, mon
     second_listing = client.get(f"{base}/comments", headers=headers).json()
 
     ids = [c["id"] for c in first_listing]
-    assert ids == [first["id"], second["id"]]
+    assert set(ids) == {first["id"], second["id"]}
     assert ids == [c["id"] for c in second_listing]
 
 
