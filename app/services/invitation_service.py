@@ -99,11 +99,15 @@ def get_invitation_by_token(db: Session, token: str) -> Optional[Invitation]:
     return db.execute(stmt).scalar_one_or_none()
 
 
-def list_invitations(db: Session, org_id: uuid.UUID) -> list[Invitation]:
+def list_invitations(
+    db: Session, org_id: uuid.UUID, *, limit: int = 50, offset: int = 0
+) -> list[Invitation]:
     stmt = (
         select(Invitation)
         .where(Invitation.organization_id == org_id)
-        .order_by(Invitation.created_at)
+        .order_by(Invitation.created_at, Invitation.id)
+        .limit(limit)
+        .offset(offset)
     )
     return list(db.execute(stmt).scalars().all())
 

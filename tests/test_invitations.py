@@ -115,6 +115,22 @@ def test_admin_can_list_and_revoke_invitation(client):
     assert revoke_response.status_code == 204
 
 
+def test_list_invitations_paginates_with_limit_and_offset(client):
+    headers = _register_and_login(client, email="owner@example.com")
+    org = _create_org(client, headers)
+    for i in range(3):
+        client.post(
+            _invitations_url(org["id"]),
+            json={"email": f"hire{i}@example.com", "role": "member"},
+            headers=headers,
+        )
+
+    response = client.get(_invitations_url(org["id"], "?limit=2&offset=0"), headers=headers)
+
+    assert response.status_code == 200
+    assert len(response.json()) == 2
+
+
 def test_accept_invitation_creates_membership_with_invited_role(client):
     owner_headers = _register_and_login(client, email="owner@example.com")
     org = _create_org(client, owner_headers)
@@ -132,9 +148,7 @@ def test_accept_invitation_creates_membership_with_invited_role(client):
     assert accept_response.status_code == 200
     assert accept_response.json()["role"] == "admin"
 
-    members = client.get(
-        f"/api/v1/organizations/{org['id']}/members", headers=owner_headers
-    ).json()
+    members = client.get(f"/api/v1/organizations/{org['id']}/members", headers=owner_headers).json()
     emails = [m["user"]["email"] for m in members]
     assert "newhire@example.com" in emails
 

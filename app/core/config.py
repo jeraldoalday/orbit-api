@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     task_list_default_limit: int = 50
     task_list_max_limit: int = 100
 
+    list_default_limit: int = 50
+    list_max_limit: int = 100
+
     cors_origins: Optional[str] = None
 
     @property

@@ -27,6 +27,37 @@ def test_list_members_includes_owner(client):
     assert body[0]["user"]["email"] == "owner@example.com"
 
 
+def test_list_members_paginates_with_limit_and_offset(client):
+    owner_headers = _register_and_login(client, email="owner@example.com")
+    org = _create_org(client, owner_headers)
+    for i in range(3):
+        email = f"member{i}@example.com"
+        _register_and_login(client, email=email)
+        client.post(
+            f"/api/v1/organizations/{org['id']}/members",
+            json={"email": email, "role": "member"},
+            headers=owner_headers,
+        )
+
+    response = client.get(
+        f"/api/v1/organizations/{org['id']}/members?limit=2&offset=0", headers=owner_headers
+    )
+
+    assert response.status_code == 200
+    assert len(response.json()) == 2
+
+
+def test_list_members_rejects_limit_over_max(client):
+    owner_headers = _register_and_login(client, email="owner@example.com")
+    org = _create_org(client, owner_headers)
+
+    response = client.get(
+        f"/api/v1/organizations/{org['id']}/members?limit=101", headers=owner_headers
+    )
+
+    assert response.status_code == 422
+
+
 def test_admin_can_add_member(client):
     owner_headers = _register_and_login(client, email="owner@example.com")
     _register_and_login(client, email="new@example.com")

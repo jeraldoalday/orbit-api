@@ -1,9 +1,10 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_organization_or_404, require_org_member, require_org_role
+from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.membership import Membership, MembershipRole, role_at_least
 from app.models.organization import Organization
@@ -19,6 +20,8 @@ from app.services.membership_service import (
     remove_member,
     update_member_role,
 )
+
+settings = get_settings()
 
 router = APIRouter(prefix="/organizations/{org_id}/members", tags=["memberships"])
 
@@ -37,8 +40,10 @@ def list_members(
     db: Session = Depends(get_db),
     organization: Organization = Depends(get_organization_or_404),
     _membership: Membership = Depends(require_org_member),
+    limit: int = Query(default=settings.list_default_limit, ge=1, le=settings.list_max_limit),
+    offset: int = Query(default=0, ge=0),
 ) -> list[MembershipRead]:
-    return list_memberships(db, organization.id)
+    return list_memberships(db, organization.id, limit=limit, offset=offset)
 
 
 @router.post("", response_model=MembershipRead, status_code=status.HTTP_201_CREATED)
@@ -49,9 +54,7 @@ def add(
     caller_membership: Membership = Depends(require_org_role(MembershipRole.ADMIN)),
 ) -> MembershipRead:
     try:
-        return add_member(
-            db, organization, member_in.email, member_in.role, caller_membership.role
-        )
+        return add_member(db, organization, member_in.email, member_in.role, caller_membership.role)
     except UserNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except AlreadyMemberError as exc:

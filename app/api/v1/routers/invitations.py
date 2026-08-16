@@ -1,9 +1,10 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_active_user, get_organization_or_404, require_org_role
+from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.invitation import Invitation
 from app.models.membership import Membership, MembershipRole
@@ -30,6 +31,8 @@ from app.services.invitation_service import (
     list_invitations,
     revoke_invitation,
 )
+
+settings = get_settings()
 
 router = APIRouter(prefix="/organizations/{org_id}/invitations", tags=["invitations"])
 accept_router = APIRouter(prefix="/invitations", tags=["invitations"])
@@ -73,8 +76,10 @@ def list_mine(
     db: Session = Depends(get_db),
     organization: Organization = Depends(get_organization_or_404),
     _membership: Membership = Depends(require_org_role(MembershipRole.ADMIN)),
+    limit: int = Query(default=settings.list_default_limit, ge=1, le=settings.list_max_limit),
+    offset: int = Query(default=0, ge=0),
 ) -> list[InvitationRead]:
-    return list_invitations(db, organization.id)
+    return list_invitations(db, organization.id, limit=limit, offset=offset)
 
 
 @router.delete("/{invitation_id}", status_code=status.HTTP_204_NO_CONTENT)

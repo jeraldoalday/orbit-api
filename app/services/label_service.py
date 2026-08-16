@@ -33,8 +33,14 @@ def get_label(db: Session, org_id: uuid.UUID, label_id: uuid.UUID) -> Optional[L
     return db.execute(stmt).scalar_one_or_none()
 
 
-def list_labels(db: Session, org_id: uuid.UUID) -> list[Label]:
-    stmt = select(Label).where(Label.organization_id == org_id).order_by(Label.name, Label.id)
+def list_labels(db: Session, org_id: uuid.UUID, *, limit: int = 50, offset: int = 0) -> list[Label]:
+    stmt = (
+        select(Label)
+        .where(Label.organization_id == org_id)
+        .order_by(Label.name, Label.id)
+        .limit(limit)
+        .offset(offset)
+    )
     return list(db.execute(stmt).scalars().all())
 
 

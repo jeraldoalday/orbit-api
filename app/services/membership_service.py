@@ -41,12 +41,16 @@ def get_membership_by_id(
     return db.execute(stmt).scalar_one_or_none()
 
 
-def list_memberships(db: Session, org_id: uuid.UUID) -> list[Membership]:
+def list_memberships(
+    db: Session, org_id: uuid.UUID, *, limit: int = 50, offset: int = 0
+) -> list[Membership]:
     stmt = (
         select(Membership)
         .options(joinedload(Membership.user))
         .where(Membership.organization_id == org_id)
-        .order_by(Membership.created_at)
+        .order_by(Membership.created_at, Membership.id)
+        .limit(limit)
+        .offset(offset)
     )
     return list(db.execute(stmt).scalars().all())
 

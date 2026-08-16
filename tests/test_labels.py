@@ -111,6 +111,19 @@ def test_list_labels_sorted_by_name(client):
     assert names == ["Alpha", "Zeta"]
 
 
+def test_list_labels_paginates_with_limit_and_offset(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    for name in ["Alpha", "Bravo", "Charlie"]:
+        client.post(_labels_url(org["id"]), json={"name": name}, headers=headers)
+
+    response = client.get(_labels_url(org["id"], "?limit=2&offset=1"), headers=headers)
+
+    assert response.status_code == 200
+    names = [label["name"] for label in response.json()]
+    assert names == ["Bravo", "Charlie"]
+
+
 def test_member_cannot_delete_label(client):
     owner_headers = _register_and_login(client, email="owner@example.com")
     member_headers = _register_and_login(client, email="member@example.com")
