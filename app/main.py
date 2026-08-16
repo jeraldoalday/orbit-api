@@ -3,10 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
+from app.core.middleware import RequestIDMiddleware
 
 settings = get_settings()
 
 app = FastAPI(title="Orbit API", version="0.1.0")
+
+app.add_middleware(RequestIDMiddleware)
 
 if settings.cors_origin_list:
     app.add_middleware(
