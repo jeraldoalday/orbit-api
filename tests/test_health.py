@@ -4,6 +4,12 @@ def test_health_check(client):
     assert response.json() == {"status": "ok"}
 
 
+def test_health_check_db(client):
+    response = client.get("/api/v1/health/db")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "database": "reachable"}
+
+
 def test_response_includes_generated_request_id(client):
     response = client.get("/api/v1/health")
     assert response.status_code == 200
