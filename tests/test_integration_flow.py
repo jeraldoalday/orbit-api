@@ -53,10 +53,33 @@ def test_full_org_project_task_lifecycle(client):
 
     task = client.post(
         f"/api/v1/organizations/{org['id']}/projects/{project['id']}/tasks",
-        json={"title": "Ship it", "assignee_id": invitee_id},
+        json={
+            "title": "Ship it",
+            "assignee_id": invitee_id,
+            "priority": "high",
+            "due_date": "2026-12-31T00:00:00Z",
+        },
         headers=owner_headers,
     ).json()
+    assert task["priority"] == "high"
     task_url = f"/api/v1/organizations/{org['id']}/projects/{project['id']}/tasks/{task['id']}"
+
+    label = client.post(
+        f"/api/v1/organizations/{org['id']}/labels",
+        json={"name": "Launch Blocker", "color": "#ff0000"},
+        headers=owner_headers,
+    ).json()
+    attach_response = client.post(
+        f"{task_url}/labels", json={"label_id": label["id"]}, headers=owner_headers
+    )
+    assert attach_response.status_code == 201
+
+    labeled_tasks = client.get(
+        f"/api/v1/organizations/{org['id']}/projects/{project['id']}/tasks"
+        f"?label_id={label['id']}&priority=high",
+        headers=owner_headers,
+    ).json()
+    assert [t["id"] for t in labeled_tasks] == [task["id"]]
 
     update_response = client.patch(
         task_url, json={"status": "in_progress"}, headers=invitee_headers
