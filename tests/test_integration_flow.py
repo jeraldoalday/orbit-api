@@ -159,9 +159,7 @@ def test_restricted_project_notification_and_search_flow(client):
     assert membership["role"] == "viewer"
     assert client.get(project_url, headers=dev_headers).status_code == 200
     assert (
-        client.post(
-            f"{project_url}/tasks", json={"title": "Nope"}, headers=dev_headers
-        ).status_code
+        client.post(f"{project_url}/tasks", json={"title": "Nope"}, headers=dev_headers).status_code
         == 403
     )
 
@@ -223,3 +221,157 @@ def test_restricted_project_notification_and_search_flow(client):
         ).json()["results"]
         == []
     )
+
+
+def test_attachments_webhooks_and_the_audit_trail_across_one_incident(client, storage):
+    """One realistic incident, end to end.
+
+    An admin wires up a webhook, work happens on a task with a file attached,
+    the task is deleted by mistake and restored, and the whole thing is then
+    purged — checking at each step that deliveries queued, that the trail
+    recorded who did what, and that the purge took the stored bytes with it.
+    """
+    import io
+
+    from app.core.webhook_signing import SIGNATURE_HEADER, verify_signature
+    from app.core.webhook_transport import TransportResponse, WebhookTransport
+    from app.db.session import get_db
+    from app.main import app as fastapi_app
+    from app.services.webhook_delivery_service import dispatch_pending
+
+    class _Collector(WebhookTransport):
+        def __init__(self):
+            self.requests = []
+
+        def post(self, url, body, headers, *, timeout):
+            self.requests.append((url, body, headers))
+            return TransportResponse(status_code=200)
+
+    owner_headers = _register_and_login(client, "lead@example.com", full_name="Lead")
+    engineer_headers = _register_and_login(client, "eng@example.com", full_name="Engineer")
+    engineer_id = client.get("/api/v1/users/me", headers=engineer_headers).json()["id"]
+
+    org = client.post(
+        "/api/v1/organizations", json={"name": "Orbit Labs"}, headers=owner_headers
+    ).json()
+    client.post(
+        f"/api/v1/organizations/{org['id']}/members",
+        json={"email": "eng@example.com", "role": "member"},
+        headers=owner_headers,
+    )
+
+    subscription = client.post(
+        f"/api/v1/organizations/{org['id']}/webhooks",
+        json={
+            "url": "https://hooks.example.com/orbit",
+            "events": ["task.created", "task.assigned", "task.deleted", "comment.created"],
+            "description": "Incident relay",
+        },
+        headers=owner_headers,
+    ).json()
+    secret = subscription["secret"]
+
+    project = client.post(
+        f"/api/v1/organizations/{org['id']}/projects",
+        json={"name": "Incident 42"},
+        headers=owner_headers,
+    ).json()
+    tasks_url = f"/api/v1/organizations/{org['id']}/projects/{project['id']}/tasks"
+
+    task = client.post(
+        tasks_url, json={"title": "Restore the queue", "priority": "urgent"}, headers=owner_headers
+    ).json()
+    client.patch(
+        f"{tasks_url}/{task['id']}", json={"assignee_id": engineer_id}, headers=owner_headers
+    )
+    client.post(
+        f"{tasks_url}/{task['id']}/comments",
+        json={"body": "Picking this up now"},
+        headers=engineer_headers,
+    )
+
+    upload = client.post(
+        f"{tasks_url}/{task['id']}/attachments",
+        files={"file": ("postmortem.txt", io.BytesIO(b"root cause: the queue"), "text/plain")},
+        headers=engineer_headers,
+    )
+    assert upload.status_code == 201
+    attachment = upload.json()
+    assert attachment["uploaded_by"]["email"] == "eng@example.com"
+
+    download = client.get(
+        f"{tasks_url}/{task['id']}/attachments/{attachment['id']}/download",
+        headers=owner_headers,
+    )
+    assert download.content == b"root cause: the queue"
+
+    # The engineer is notified of the assignment; the comment was their own.
+    inbox = client.get("/api/v1/notifications", headers=engineer_headers).json()
+    assert [item["notification_type"] for item in inbox] == ["task_assigned"]
+
+    # Deliveries are queued but nothing has been posted until the worker runs.
+    session = next(fastapi_app.dependency_overrides[get_db]())
+    collector = _Collector()
+    summary = dispatch_pending(session, collector, verify_target=False)
+
+    assert summary.attempted == summary.succeeded == 3
+    assert [headers["X-Orbit-Event"] for _url, _body, headers in collector.requests] == [
+        "task.created",
+        "task.assigned",
+        "comment.created",
+    ]
+    for url, body, headers in collector.requests:
+        assert url == "https://hooks.example.com/orbit"
+        assert verify_signature(secret, body, headers[SIGNATURE_HEADER])
+
+    # Deleted by mistake, then restored: the file survives the round trip.
+    client.delete(f"{tasks_url}/{task['id']}", headers=owner_headers)
+    assert client.get(f"{tasks_url}/{task['id']}", headers=owner_headers).status_code == 404
+    assert client.get(f"{tasks_url}", headers=owner_headers).json() == []
+
+    client.post(f"{tasks_url}/{task['id']}/restore", headers=owner_headers)
+    restored = client.get(f"{tasks_url}/{task['id']}", headers=owner_headers).json()
+    assert restored["deleted_at"] is None
+    assert (
+        client.get(f"{tasks_url}/{task['id']}/attachments", headers=owner_headers).json()[0]["id"]
+        == attachment["id"]
+    )
+
+    # Purging the project takes the task, the file and the bytes with it.
+    client.delete(
+        f"/api/v1/organizations/{org['id']}/projects/{project['id']}", headers=owner_headers
+    )
+    purged = client.delete(
+        f"/api/v1/organizations/{org['id']}/projects/{project['id']}/purge", headers=owner_headers
+    )
+    assert purged.status_code == 204
+
+    import os
+
+    remaining = [name for _d, _s, files in os.walk(storage.root) for name in files]
+    assert remaining == []
+
+    # The trail outlives everything it describes.
+    trail = client.get(
+        f"/api/v1/organizations/{org['id']}/audit-logs", headers=owner_headers
+    ).json()
+    actions = [entry["action"] for entry in trail]
+    assert actions == [
+        "project.purged",
+        "project.deleted",
+        "task.restored",
+        "task.deleted",
+        "project.created",
+        "webhook.created",
+        "member.added",
+    ]
+    purge_entry = trail[0]
+    assert purge_entry["resource_id"] == project["id"]
+    assert purge_entry["actor_email"] == "lead@example.com"
+
+    # Search finds nothing left, and the engineer can no longer reach any of it.
+    results = client.get(
+        f"/api/v1/organizations/{org['id']}/search?q=queue", headers=owner_headers
+    ).json()
+    assert results["results"] == []
+    assert client.get(tasks_url, headers=engineer_headers).status_code == 404
