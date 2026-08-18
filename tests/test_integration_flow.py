@@ -118,3 +118,108 @@ def test_full_org_project_task_lifecycle(client):
         f"/api/v1/organizations/{org['id']}/projects/{project['id']}/tasks", headers=owner_headers
     ).json()
     assert remaining_tasks == []
+
+
+def test_restricted_project_notification_and_search_flow(client):
+    """A second end-to-end pass over the features layered on after the basics:
+    project-scoped membership, the notification inbox, and org-wide search.
+    """
+    owner_headers = _register_and_login(client, "lead@example.com", full_name="Lead")
+    dev_headers = _register_and_login(client, "dev@example.com", full_name="Dev")
+    outsider_headers = _register_and_login(client, "sales@example.com", full_name="Sales")
+    dev_id = client.get("/api/v1/users/me", headers=dev_headers).json()["id"]
+
+    org = client.post(
+        "/api/v1/organizations", json={"name": "Skunkworks"}, headers=owner_headers
+    ).json()
+    for email in ["dev@example.com", "sales@example.com"]:
+        client.post(
+            f"/api/v1/organizations/{org['id']}/members",
+            json={"email": email, "role": "member"},
+            headers=owner_headers,
+        )
+
+    # A restricted project is invisible to org members who aren't on it.
+    project = client.post(
+        f"/api/v1/organizations/{org['id']}/projects",
+        json={"name": "Project Nimbus", "visibility": "restricted"},
+        headers=owner_headers,
+    ).json()
+    project_url = f"/api/v1/organizations/{org['id']}/projects/{project['id']}"
+
+    assert client.get(project_url, headers=outsider_headers).status_code == 404
+    assert client.get(project_url, headers=dev_headers).status_code == 404
+
+    # Grant the dev viewer access first: they can read, but not write.
+    membership = client.post(
+        f"{project_url}/members",
+        json={"email": "dev@example.com", "role": "viewer"},
+        headers=owner_headers,
+    ).json()
+    assert membership["role"] == "viewer"
+    assert client.get(project_url, headers=dev_headers).status_code == 200
+    assert (
+        client.post(
+            f"{project_url}/tasks", json={"title": "Nope"}, headers=dev_headers
+        ).status_code
+        == 403
+    )
+
+    # Promoting to editor unlocks writes.
+    client.patch(
+        f"{project_url}/members/{membership['id']}", json={"role": "editor"}, headers=owner_headers
+    )
+
+    task = client.post(
+        f"{project_url}/tasks",
+        json={"title": "Design the nimbus rig", "assignee_id": dev_id},
+        headers=owner_headers,
+    ).json()
+    task_url = f"{project_url}/tasks/{task['id']}"
+
+    # The assignment landed in the dev's inbox, and nobody else's.
+    inbox = client.get("/api/v1/notifications", headers=dev_headers).json()
+    assert [n["notification_type"] for n in inbox] == ["task_assigned"]
+    assert inbox[0]["actor"]["email"] == "lead@example.com"
+    assert client.get("/api/v1/notifications", headers=owner_headers).json() == []
+
+    # A mention notifies directly, and replaces the generic assignee ping.
+    client.post(
+        f"{task_url}/comments",
+        json={"body": "@dev@example.com can you take the first pass?"},
+        headers=owner_headers,
+    )
+    inbox = client.get("/api/v1/notifications", headers=dev_headers).json()
+    assert [n["notification_type"] for n in inbox] == ["mentioned", "task_assigned"]
+    assert client.get("/api/v1/notifications/unread_count", headers=dev_headers).json() == {
+        "unread": 2
+    }
+
+    assert client.post("/api/v1/notifications/read_all", headers=dev_headers).json() == {
+        "marked": 2
+    }
+    assert client.get("/api/v1/notifications/unread_count", headers=dev_headers).json() == {
+        "unread": 0
+    }
+
+    # Search respects project visibility: the dev sees the restricted work, the
+    # outsider sees nothing at all for the same query.
+    dev_hits = client.get(
+        f"/api/v1/organizations/{org['id']}/search?q=nimbus", headers=dev_headers
+    ).json()
+    assert sorted(hit["kind"] for hit in dev_hits["results"]) == ["project", "task"]
+
+    outsider_hits = client.get(
+        f"/api/v1/organizations/{org['id']}/search?q=nimbus", headers=outsider_headers
+    ).json()
+    assert outsider_hits["results"] == []
+
+    # Revoking project membership revokes reads and search results together.
+    client.delete(f"{project_url}/members/{membership['id']}", headers=owner_headers)
+    assert client.get(project_url, headers=dev_headers).status_code == 404
+    assert (
+        client.get(
+            f"/api/v1/organizations/{org['id']}/search?q=nimbus", headers=dev_headers
+        ).json()["results"]
+        == []
+    )
