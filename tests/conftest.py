@@ -2,6 +2,9 @@ import os
 
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg2://u:p@localhost:5432/db")
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret")
+# Every test registers at least one user, and bcrypt at the production cost
+# factor made hashing the single largest line item in the suite's runtime.
+os.environ.setdefault("BCRYPT_ROUNDS", "4")
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

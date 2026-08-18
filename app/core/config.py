@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Optional
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,6 +16,12 @@ class Settings(BaseSettings):
 
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"
+    # bcrypt's cost factor. 12 is the production default; the test suite drops
+    # it to the minimum, since hashing dominates the runtime of a suite that
+    # registers a handful of users per test and never checks hash strength.
+    # Bounded by what bcrypt itself accepts, so a typo fails at startup rather
+    # than on the first login.
+    bcrypt_rounds: int = Field(default=12, ge=4, le=31)
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 14
     invite_expire_days: int = 7

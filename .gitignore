@@ -21,3 +21,6 @@ build/
 .DS_Store
 .idea/
 .vscode/
+
+# attachment blobs written by the local storage backend
+var/
