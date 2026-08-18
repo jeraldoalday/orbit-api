@@ -5,6 +5,10 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-secret")
 # Every test registers at least one user, and bcrypt at the production cost
 # factor made hashing the single largest line item in the suite's runtime.
 os.environ.setdefault("BCRYPT_ROUNDS", "4")
+# Webhook URL validation resolves the target hostname as an SSRF filter. Tests
+# must not depend on DNS being reachable, so the lookup is off by default here
+# and exercised directly in the unit tests that care about it.
+os.environ.setdefault("WEBHOOK_VALIDATE_DNS", "false")
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

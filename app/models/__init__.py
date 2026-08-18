@@ -11,6 +11,12 @@ from app.models.task_activity import TaskActivity, TaskActivityType
 from app.models.task_comment import TaskComment
 from app.models.task_label import TaskLabel
 from app.models.user import User
+from app.models.webhook import (
+    DeliveryStatus,
+    WebhookDelivery,
+    WebhookEvent,
+    WebhookSubscription,
+)
 
 __all__ = [
     "Organization",
@@ -34,4 +40,8 @@ __all__ = [
     "NotificationType",
     "TaskLabel",
     "Attachment",
+    "WebhookSubscription",
+    "WebhookDelivery",
+    "WebhookEvent",
+    "DeliveryStatus",
 ]

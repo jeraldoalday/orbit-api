@@ -16,6 +16,7 @@ from app.api.v1.routers import (
     task_labels,
     tasks,
     users,
+    webhooks,
 )
 
 api_router = APIRouter()
@@ -35,3 +36,4 @@ api_router.include_router(invitations.router)
 api_router.include_router(invitations.accept_router)
 api_router.include_router(notifications.router)
 api_router.include_router(search.router)
+api_router.include_router(webhooks.router)

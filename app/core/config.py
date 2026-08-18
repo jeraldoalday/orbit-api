@@ -36,6 +36,16 @@ class Settings(BaseSettings):
     attachment_max_bytes: int = 10 * 1024 * 1024
     attachment_max_per_task: int = 20
 
+    webhook_max_per_org: int = 10
+    webhook_max_attempts: int = 5
+    webhook_timeout_seconds: float = 10.0
+    # Retries back off as base * 2 ** (attempt - 1): 60s, 2m, 4m, 8m.
+    webhook_backoff_base_seconds: int = 60
+    webhook_batch_size: int = 50
+    # Resolving a target hostname is a best-effort SSRF filter; it is turned
+    # off in tests, where no name should be looked up at all.
+    webhook_validate_dns: bool = True
+
     rate_limit_enabled: bool = True
     rate_limit_requests: int = 300
     rate_limit_window_seconds: int = 60
