@@ -5,6 +5,7 @@ from typing import Literal, Optional
 from sqlalchemy import asc, case, desc, select
 from sqlalchemy.orm import Session
 
+from app.models.notification import NotificationType
 from app.models.project import Project
 from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.task_activity import TaskActivityType
@@ -12,6 +13,7 @@ from app.models.task_label import TaskLabel
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.services.membership_service import get_membership
+from app.services.notification_service import create_notification
 from app.services.task_activity_service import record_activity
 
 TaskSortField = Literal["created_at", "title", "status", "priority", "due_date"]
@@ -46,6 +48,21 @@ def _check_assignee_is_member(db: Session, project: Project, assignee_id: uuid.U
         raise AssigneeNotMemberError("Assignee is not a member of this organization")
 
 
+def _notify_assignee(
+    db: Session, project: Project, task: Task, actor: User, assignee_id: uuid.UUID
+) -> None:
+    create_notification(
+        db,
+        user_id=assignee_id,
+        organization_id=project.organization_id,
+        notification_type=NotificationType.TASK_ASSIGNED,
+        actor=actor,
+        task_id=task.id,
+        data={"task_title": task.title, "project_id": str(project.id)},
+        commit=False,
+    )
+
+
 def create_task(db: Session, project: Project, task_in: TaskCreate, actor: User) -> Task:
     if task_in.assignee_id is not None:
         _check_assignee_is_member(db, project, task_in.assignee_id)
@@ -61,6 +78,8 @@ def create_task(db: Session, project: Project, task_in: TaskCreate, actor: User)
     db.add(task)
     db.flush()
     record_activity(db, task.id, actor, TaskActivityType.CREATED, commit=False)
+    if task.assignee_id is not None:
+        _notify_assignee(db, project, task, actor, task.assignee_id)
     db.commit()
     db.refresh(task)
     return task
@@ -144,6 +163,8 @@ def update_task(
             "to": str(task_in.assignee_id) if task_in.assignee_id else None,
         }
         task.assignee_id = task_in.assignee_id
+        if task_in.assignee_id is not None:
+            _notify_assignee(db, project, task, actor, task_in.assignee_id)
 
     if changes:
         record_activity(db, task.id, actor, TaskActivityType.UPDATED, changes, commit=False)

@@ -5,12 +5,14 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import (
     get_current_active_user,
+    get_project_or_404,
     get_task_or_404,
     require_org_member,
     require_project_role,
 )
 from app.db.session import get_db
 from app.models.membership import Membership, MembershipRole, role_at_least
+from app.models.project import Project
 from app.models.project_member import ProjectRole
 from app.models.task import Task
 from app.models.user import User
@@ -33,11 +35,12 @@ router = APIRouter(
 def create(
     comment_in: TaskCommentCreate,
     db: Session = Depends(get_db),
+    project: Project = Depends(get_project_or_404),
     task: Task = Depends(get_task_or_404),
     _role: ProjectRole = Depends(require_project_role(ProjectRole.EDITOR)),
     current_user: User = Depends(get_current_active_user),
 ) -> TaskCommentRead:
-    return create_comment(db, task.id, current_user, comment_in.body)
+    return create_comment(db, project, task, current_user, comment_in.body)
 
 
 @router.get("/comments", response_model=list[TaskCommentRead])
