@@ -111,7 +111,9 @@ def update(
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete(
     db: Session = Depends(get_db),
+    project: Project = Depends(get_project_or_404),
     task: Task = Depends(get_task_or_404),
     _membership: Membership = Depends(require_org_role(MembershipRole.ADMIN)),
+    current_user: User = Depends(get_current_active_user),
 ) -> None:
-    delete_task(db, task)
+    delete_task(db, project, task, current_user)

@@ -11,10 +11,12 @@ from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.task_activity import TaskActivityType
 from app.models.task_label import TaskLabel
 from app.models.user import User
+from app.models.webhook import WebhookEvent
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.services.membership_service import get_membership
 from app.services.notification_service import create_notification
 from app.services.task_activity_service import record_activity
+from app.services.webhook_events import emit_task_event
 
 TaskSortField = Literal["created_at", "title", "status", "priority", "due_date"]
 
@@ -80,6 +82,7 @@ def create_task(db: Session, project: Project, task_in: TaskCreate, actor: User)
     record_activity(db, task.id, actor, TaskActivityType.CREATED, commit=False)
     if task.assignee_id is not None:
         _notify_assignee(db, project, task, actor, task.assignee_id)
+    emit_task_event(db, project, task, WebhookEvent.TASK_CREATED, actor)
     db.commit()
     db.refresh(task)
     return task
@@ -168,6 +171,15 @@ def update_task(
 
     if changes:
         record_activity(db, task.id, actor, TaskActivityType.UPDATED, changes, commit=False)
+        # Only a real change is worth a delivery: a PATCH that sets a field to
+        # the value it already had shouldn't wake up every subscriber.
+        emit_task_event(
+            db, project, task, WebhookEvent.TASK_UPDATED, actor, extra={"changes": changes}
+        )
+        if "assignee_id" in changes:
+            # A reassignment is the one update most integrations act on, so it
+            # gets its own event rather than being buried in a changes diff.
+            emit_task_event(db, project, task, WebhookEvent.TASK_ASSIGNED, actor)
 
     db.commit()
     db.refresh(task)
@@ -175,6 +187,9 @@ def update_task(
     return task
 
 
-def delete_task(db: Session, task: Task) -> None:
+def delete_task(db: Session, project: Project, task: Task, actor: Optional[User] = None) -> None:
+    # The payload is built before the delete: afterwards the instance is
+    # expired and reading its columns would fail.
+    emit_task_event(db, project, task, WebhookEvent.TASK_DELETED, actor)
     db.delete(task)
     db.commit()

@@ -12,6 +12,7 @@ from app.models.user import User
 from app.services.auth_service import get_user_by_email
 from app.services.membership_service import get_membership
 from app.services.notification_service import create_notification, extract_mentions
+from app.services.webhook_events import emit_comment_event
 
 
 def _notify_comment(
@@ -69,6 +70,7 @@ def create_comment(
     db.add(comment)
     db.flush()
     _notify_comment(db, project, task, author, comment)
+    emit_comment_event(db, project, task, comment, author)
     db.commit()
     db.refresh(comment)
     return comment
