@@ -98,6 +98,7 @@ def search_projects(
         select(Project, score.label("score"))
         .where(
             Project.organization_id == org_id,
+            Project.deleted_at.is_(None),
             _match_clause(Project.name, func.coalesce(Project.description, ""), terms),
         )
         .order_by(score.desc(), Project.name, Project.id)
@@ -130,6 +131,10 @@ def search_tasks(
         .join(Project, Project.id == Task.project_id)
         .where(
             Project.organization_id == org_id,
+            # A task inside a deleted project is unreachable through the API,
+            # so surfacing it in search would be the one way back to it.
+            Project.deleted_at.is_(None),
+            Task.deleted_at.is_(None),
             _match_clause(Task.title, func.coalesce(Task.description, ""), terms),
         )
         .order_by(score.desc(), Task.created_at.desc(), Task.id)

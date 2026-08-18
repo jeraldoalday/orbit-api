@@ -36,3 +36,4 @@ class TaskRead(BaseModel):
     assignee_id: Optional[uuid.UUID]
     priority: TaskPriority
     due_date: Optional[datetime]
+    deleted_at: Optional[datetime] = None

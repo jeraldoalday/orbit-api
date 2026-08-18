@@ -7,7 +7,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.models.mixins import TimestampMixin, UUIDPKMixin
+from app.models.mixins import SoftDeleteMixin, TimestampMixin, UUIDPKMixin
 
 if TYPE_CHECKING:
     from app.models.organization import Organization
@@ -27,7 +27,7 @@ class ProjectVisibility(str, enum.Enum):
     RESTRICTED = "restricted"
 
 
-class Project(UUIDPKMixin, TimestampMixin, Base):
+class Project(UUIDPKMixin, TimestampMixin, SoftDeleteMixin, Base):
     __tablename__ = "projects"
 
     organization_id: Mapped[uuid.UUID] = mapped_column(

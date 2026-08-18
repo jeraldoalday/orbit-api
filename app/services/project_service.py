@@ -22,16 +22,34 @@ def create_project(db: Session, organization: Organization, project_in: ProjectC
     return project
 
 
-def get_project(db: Session, org_id: uuid.UUID, project_id: uuid.UUID) -> Optional[Project]:
+def get_project(
+    db: Session, org_id: uuid.UUID, project_id: uuid.UUID, *, include_deleted: bool = False
+) -> Optional[Project]:
     stmt = select(Project).where(Project.id == project_id, Project.organization_id == org_id)
+    if not include_deleted:
+        stmt = stmt.where(Project.deleted_at.is_(None))
     return db.execute(stmt).scalar_one_or_none()
 
 
-def list_projects(db: Session, org_id: uuid.UUID) -> list[Project]:
+def list_projects(
+    db: Session, org_id: uuid.UUID, *, include_deleted: bool = False
+) -> list[Project]:
+    stmt = select(Project).where(Project.organization_id == org_id)
+    if not include_deleted:
+        stmt = stmt.where(Project.deleted_at.is_(None))
+    return list(db.execute(stmt.order_by(Project.name, Project.id)).scalars().all())
+
+
+def list_deleted_projects(
+    db: Session, org_id: uuid.UUID, *, limit: int = 50, offset: int = 0
+) -> list[Project]:
+    """Soft-deleted projects, most recently deleted first."""
     stmt = (
         select(Project)
-        .where(Project.organization_id == org_id)
-        .order_by(Project.name, Project.id)
+        .where(Project.organization_id == org_id, Project.deleted_at.is_not(None))
+        .order_by(Project.deleted_at.desc(), Project.id)
+        .limit(limit)
+        .offset(offset)
     )
     return list(db.execute(stmt).scalars().all())
 
@@ -52,6 +70,27 @@ def update_project(db: Session, project: Project, project_in: ProjectUpdate) -> 
     return project
 
 
-def delete_project(db: Session, project: Project) -> None:
+def soft_delete_project(db: Session, project: Project) -> Project:
+    """Hide a project without destroying it or anything under it."""
+    project.mark_deleted()
+    db.commit()
+    db.refresh(project)
+    return project
+
+
+def restore_project(db: Session, project: Project) -> Project:
+    project.mark_restored()
+    db.commit()
+    db.refresh(project)
+    return project
+
+
+def purge_project(db: Session, project: Project) -> None:
+    """Delete for real, taking every task, comment and attachment with it.
+
+    Unlike the soft delete this is unrecoverable, which is why the route that
+    reaches it is limited to org owners and refuses a project that has not been
+    soft-deleted first.
+    """
     db.delete(project)
     db.commit()

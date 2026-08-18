@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
+    get_deleted_project_or_404,
     get_organization_or_404,
     get_project_or_404,
     require_org_member,
@@ -16,7 +17,14 @@ from app.models.project import Project
 from app.models.project_member import ProjectRole
 from app.schemas.project import ProjectCreate, ProjectRead, ProjectUpdate
 from app.services.project_member_service import list_visible_projects
-from app.services.project_service import create_project, delete_project, update_project
+from app.services.project_service import (
+    create_project,
+    list_deleted_projects,
+    purge_project,
+    restore_project,
+    soft_delete_project,
+    update_project,
+)
 
 settings = get_settings()
 
@@ -42,6 +50,21 @@ def list_mine(
     offset: int = Query(default=0, ge=0),
 ) -> list[ProjectRead]:
     return list_visible_projects(db, organization.id, membership, limit=limit, offset=offset)
+
+
+# Registered before "/{project_id}" so the literal path wins the match: the
+# other order sends "deleted" into the UUID path parameter and returns a 422.
+@router.get("/deleted", response_model=list[ProjectRead])
+def list_deleted(
+    db: Session = Depends(get_db),
+    organization: Organization = Depends(get_organization_or_404),
+    _membership: Membership = Depends(require_org_role(MembershipRole.ADMIN)),
+    limit: int = Query(default=settings.list_default_limit, ge=1, le=settings.list_max_limit),
+    offset: int = Query(default=0, ge=0),
+) -> list[ProjectRead]:
+    """The recycle bin — admin-only, since a deleted project is hidden from
+    ordinary members precisely so that they stop seeing it."""
+    return list_deleted_projects(db, organization.id, limit=limit, offset=offset)
 
 
 @router.get("/{project_id}", response_model=ProjectRead)
@@ -75,4 +98,36 @@ def delete(
     project: Project = Depends(get_project_or_404),
     _membership: Membership = Depends(require_org_role(MembershipRole.ADMIN)),
 ) -> None:
-    delete_project(db, project)
+    """Soft-delete: the project vanishes from every read but stays restorable."""
+    soft_delete_project(db, project)
+
+
+@router.post("/{project_id}/restore", response_model=ProjectRead)
+def restore(
+    db: Session = Depends(get_db),
+    project: Project = Depends(get_deleted_project_or_404),
+    _membership: Membership = Depends(require_org_role(MembershipRole.ADMIN)),
+) -> ProjectRead:
+    if not project.is_deleted:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project is not deleted")
+    return restore_project(db, project)
+
+
+@router.delete("/{project_id}/purge", status_code=status.HTTP_204_NO_CONTENT)
+def purge(
+    db: Session = Depends(get_db),
+    project: Project = Depends(get_deleted_project_or_404),
+    _membership: Membership = Depends(require_org_role(MembershipRole.OWNER)),
+) -> None:
+    """Delete a project and everything under it, irreversibly.
+
+    Restricted to owners, and it refuses a project that hasn't been
+    soft-deleted first: the soft delete *is* the confirmation step, so no
+    single call takes a live project straight to gone.
+    """
+    if not project.is_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Delete the project before purging it",
+        )
+    purge_project(db, project)

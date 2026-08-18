@@ -102,12 +102,41 @@ def get_project_or_404(
     return project
 
 
+def get_deleted_project_or_404(
+    project_id: uuid.UUID,
+    organization: Organization = Depends(get_organization_or_404),
+    db: Session = Depends(get_db),
+) -> Project:
+    """Look up a project including soft-deleted ones.
+
+    Restore and purge are the only operations that need to reach a deleted
+    project; every other route uses `get_project_or_404` and so treats a
+    soft-deleted project as gone.
+    """
+    project = get_project(db, organization.id, project_id, include_deleted=True)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    return project
+
+
 def get_task_or_404(
     task_id: uuid.UUID,
     project: Project = Depends(get_project_or_404),
     db: Session = Depends(get_db),
 ) -> Task:
     task = get_task(db, project.id, task_id)
+    if task is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    return task
+
+
+def get_deleted_task_or_404(
+    task_id: uuid.UUID,
+    project: Project = Depends(get_project_or_404),
+    db: Session = Depends(get_db),
+) -> Task:
+    """Look up a task including soft-deleted ones, inside a live project."""
+    task = get_task(db, project.id, task_id, include_deleted=True)
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     return task

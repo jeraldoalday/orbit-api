@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.models.mixins import TimestampMixin, UUIDPKMixin
+from app.models.mixins import SoftDeleteMixin, TimestampMixin, UUIDPKMixin
 
 if TYPE_CHECKING:
     from app.models.attachment import Attachment
@@ -30,7 +30,7 @@ class TaskPriority(str, enum.Enum):
     URGENT = "urgent"
 
 
-class Task(UUIDPKMixin, TimestampMixin, Base):
+class Task(UUIDPKMixin, TimestampMixin, SoftDeleteMixin, Base):
     __tablename__ = "tasks"
 
     project_id: Mapped[uuid.UUID] = mapped_column(

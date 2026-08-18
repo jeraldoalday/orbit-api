@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy import DateTime
 from sqlalchemy.dialects.postgresql import UUID
@@ -29,3 +30,31 @@ class TimestampMixin:
         onupdate=_utcnow,
         nullable=False,
     )
+
+
+class SoftDeleteMixin:
+    """Marks a row as deleted without removing it.
+
+    A hard DELETE on a project takes its tasks, comments, activities and
+    attachments with it, and there is no way back from a misclick. Stamping a
+    timestamp instead keeps the history intact and makes restore a one-column
+    update; the column is indexed because *every* read of these tables filters
+    on it.
+    """
+
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+
+    @property
+    def is_deleted(self) -> bool:
+        return self.deleted_at is not None
+
+    def mark_deleted(self) -> None:
+        # Re-deleting keeps the original timestamp: "deleted 3 days ago"
+        # shouldn't reset because someone pressed delete twice.
+        if self.deleted_at is None:
+            self.deleted_at = _utcnow()
+
+    def mark_restored(self) -> None:
+        self.deleted_at = None

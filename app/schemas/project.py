@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
@@ -27,3 +28,6 @@ class ProjectRead(BaseModel):
     name: str
     description: Optional[str]
     visibility: ProjectVisibility
+    # Always present, and null for a live project — a client rendering the
+    # recycle bin needs to know when something was deleted.
+    deleted_at: Optional[datetime] = None

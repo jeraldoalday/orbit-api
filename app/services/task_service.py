@@ -88,8 +88,12 @@ def create_task(db: Session, project: Project, task_in: TaskCreate, actor: User)
     return task
 
 
-def get_task(db: Session, project_id: uuid.UUID, task_id: uuid.UUID) -> Optional[Task]:
+def get_task(
+    db: Session, project_id: uuid.UUID, task_id: uuid.UUID, *, include_deleted: bool = False
+) -> Optional[Task]:
     stmt = select(Task).where(Task.id == task_id, Task.project_id == project_id)
+    if not include_deleted:
+        stmt = stmt.where(Task.deleted_at.is_(None))
     return db.execute(stmt).scalar_one_or_none()
 
 
@@ -105,11 +109,14 @@ def list_tasks(
     label_id: Optional[uuid.UUID] = None,
     sort_by: TaskSortField = "created_at",
     order: Literal["asc", "desc"] = "asc",
+    include_deleted: bool = False,
     limit: int = 50,
     offset: int = 0,
 ) -> list[Task]:
     stmt = select(Task).where(Task.project_id == project_id)
 
+    if not include_deleted:
+        stmt = stmt.where(Task.deleted_at.is_(None))
     if status is not None:
         stmt = stmt.where(Task.status == status)
     if assignee_id is not None:
@@ -131,6 +138,20 @@ def list_tasks(
 
     stmt = stmt.limit(limit).offset(offset)
 
+    return list(db.execute(stmt).scalars().all())
+
+
+def list_deleted_tasks(
+    db: Session, project_id: uuid.UUID, *, limit: int = 50, offset: int = 0
+) -> list[Task]:
+    """Soft-deleted tasks in a project, most recently deleted first."""
+    stmt = (
+        select(Task)
+        .where(Task.project_id == project_id, Task.deleted_at.is_not(None))
+        .order_by(Task.deleted_at.desc(), Task.id)
+        .limit(limit)
+        .offset(offset)
+    )
     return list(db.execute(stmt).scalars().all())
 
 
@@ -187,9 +208,29 @@ def update_task(
     return task
 
 
-def delete_task(db: Session, project: Project, task: Task, actor: Optional[User] = None) -> None:
-    # The payload is built before the delete: afterwards the instance is
-    # expired and reading its columns would fail.
+def soft_delete_task(
+    db: Session, project: Project, task: Task, actor: Optional[User] = None
+) -> Task:
+    task.mark_deleted()
     emit_task_event(db, project, task, WebhookEvent.TASK_DELETED, actor)
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def restore_task(db: Session, project: Project, task: Task, actor: Optional[User] = None) -> Task:
+    task.mark_restored()
+    # A restore is a change to the task the same way a status flip is, so it
+    # goes out as task.updated rather than needing an event of its own.
+    emit_task_event(
+        db, project, task, WebhookEvent.TASK_UPDATED, actor, extra={"changes": {"restored": True}}
+    )
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def purge_task(db: Session, task: Task) -> None:
+    """Delete for real, taking the task's comments, activity and files with it."""
     db.delete(task)
     db.commit()

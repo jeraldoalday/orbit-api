@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import (
     get_current_active_user,
+    get_deleted_task_or_404,
     get_project_or_404,
     get_task_or_404,
     require_org_role,
@@ -23,8 +24,11 @@ from app.schemas.task import TaskCreate, TaskRead, TaskUpdate
 from app.services.task_service import (
     AssigneeNotMemberError,
     create_task,
-    delete_task,
+    list_deleted_tasks,
     list_tasks,
+    purge_task,
+    restore_task,
+    soft_delete_task,
     update_task,
 )
 
@@ -83,6 +87,20 @@ def list_mine(
     )
 
 
+# Registered before "/{task_id}" so the literal path wins the match.
+@router.get("/deleted", response_model=list[TaskRead])
+def list_deleted(
+    db: Session = Depends(get_db),
+    project: Project = Depends(get_project_or_404),
+    _membership: Membership = Depends(require_org_role(MembershipRole.ADMIN)),
+    limit: int = Query(
+        default=settings.task_list_default_limit, ge=1, le=settings.task_list_max_limit
+    ),
+    offset: int = Query(default=0, ge=0),
+) -> list[TaskRead]:
+    return list_deleted_tasks(db, project.id, limit=limit, offset=offset)
+
+
 @router.get("/{task_id}", response_model=TaskRead)
 def get(
     task: Task = Depends(get_task_or_404),
@@ -116,4 +134,32 @@ def delete(
     _membership: Membership = Depends(require_org_role(MembershipRole.ADMIN)),
     current_user: User = Depends(get_current_active_user),
 ) -> None:
-    delete_task(db, project, task, current_user)
+    """Soft-delete: the task vanishes from every read but stays restorable."""
+    soft_delete_task(db, project, task, current_user)
+
+
+@router.post("/{task_id}/restore", response_model=TaskRead)
+def restore(
+    db: Session = Depends(get_db),
+    project: Project = Depends(get_project_or_404),
+    task: Task = Depends(get_deleted_task_or_404),
+    _membership: Membership = Depends(require_org_role(MembershipRole.ADMIN)),
+    current_user: User = Depends(get_current_active_user),
+) -> TaskRead:
+    if not task.is_deleted:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is not deleted")
+    return restore_task(db, project, task, current_user)
+
+
+@router.delete("/{task_id}/purge", status_code=status.HTTP_204_NO_CONTENT)
+def purge(
+    db: Session = Depends(get_db),
+    task: Task = Depends(get_deleted_task_or_404),
+    _membership: Membership = Depends(require_org_role(MembershipRole.OWNER)),
+) -> None:
+    """Irreversibly delete a task with its comments, activity and attachments."""
+    if not task.is_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Delete the task before purging it"
+        )
+    purge_task(db, task)

@@ -118,7 +118,9 @@ def list_visible_projects(
     db: Session, org_id: uuid.UUID, membership: Membership, *, limit: int = 50, offset: int = 0
 ) -> list[Project]:
     """Projects in an org the caller may see, newest-name-first and paginated."""
-    stmt = select(Project).where(Project.organization_id == org_id)
+    stmt = select(Project).where(
+        Project.organization_id == org_id, Project.deleted_at.is_(None)
+    )
 
     if not role_at_least(membership.role, MembershipRole.ADMIN):
         # Plain members see open projects plus the restricted ones they're on.
