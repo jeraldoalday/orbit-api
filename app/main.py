@@ -4,11 +4,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.middleware import RequestIDMiddleware
+from app.core.rate_limit import RateLimitMiddleware
 
 settings = get_settings()
 
 app = FastAPI(title="Orbit API", version="0.1.0")
 
+# Starlette runs middleware in reverse registration order, so the request id
+# is assigned before rate limiting and a 429 still carries its correlation id.
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(RequestIDMiddleware)
 
 if settings.cors_origin_list:

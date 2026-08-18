@@ -9,6 +9,7 @@ from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
+from app.core.rate_limit import reset_rate_limits  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.session import get_db  # noqa: E402
 from app.main import app  # noqa: E402
@@ -22,6 +23,18 @@ test_engine = create_engine(
     poolclass=StaticPool,
 )
 TestSessionLocal = sessionmaker(bind=test_engine, autoflush=False, autocommit=False, future=True)
+
+
+@pytest.fixture(autouse=True)
+def _clear_rate_limits():
+    """Rate limit counters live in the process, so they leak between tests.
+
+    Without this every test shares one budget and later tests start failing
+    with 429s that have nothing to do with what they assert.
+    """
+    reset_rate_limits()
+    yield
+    reset_rate_limits()
 
 
 @pytest.fixture()

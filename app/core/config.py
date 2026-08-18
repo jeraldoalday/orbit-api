@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     list_default_limit: int = 50
     list_max_limit: int = 100
 
+    rate_limit_enabled: bool = True
+    rate_limit_requests: int = 300
+    rate_limit_window_seconds: int = 60
+    auth_rate_limit_requests: int = 10
+    auth_rate_limit_window_seconds: int = 60
+
     cors_origins: Optional[str] = None
 
     @property
