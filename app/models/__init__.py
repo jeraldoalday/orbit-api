@@ -1,6 +1,7 @@
 from app.models.invitation import Invitation, InvitationStatus
 from app.models.label import Label
 from app.models.membership import Membership, MembershipRole
+from app.models.notification import Notification, NotificationType
 from app.models.organization import Organization
 from app.models.project import Project, ProjectVisibility
 from app.models.project_member import ProjectMember, ProjectRole
@@ -28,5 +29,7 @@ __all__ = [
     "Invitation",
     "InvitationStatus",
     "Label",
+    "Notification",
+    "NotificationType",
     "TaskLabel",
 ]
