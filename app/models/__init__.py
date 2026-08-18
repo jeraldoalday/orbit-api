@@ -1,4 +1,5 @@
 from app.models.attachment import Attachment
+from app.models.audit_log import AuditAction, AuditLog, AuditResource
 from app.models.invitation import Invitation, InvitationStatus
 from app.models.label import Label
 from app.models.membership import Membership, MembershipRole
@@ -40,6 +41,9 @@ __all__ = [
     "NotificationType",
     "TaskLabel",
     "Attachment",
+    "AuditLog",
+    "AuditAction",
+    "AuditResource",
     "WebhookSubscription",
     "WebhookDelivery",
     "WebhookEvent",

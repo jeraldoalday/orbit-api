@@ -3,11 +3,17 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_organization_or_404, require_org_member, require_org_role
+from app.api.deps import (
+    get_current_active_user,
+    get_organization_or_404,
+    require_org_member,
+    require_org_role,
+)
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.membership import Membership, MembershipRole, role_at_least
 from app.models.organization import Organization
+from app.models.user import User
 from app.schemas.membership import MembershipCreate, MembershipRead, MembershipRoleUpdate
 from app.services.membership_service import (
     AlreadyMemberError,
@@ -52,9 +58,17 @@ def add(
     db: Session = Depends(get_db),
     organization: Organization = Depends(get_organization_or_404),
     caller_membership: Membership = Depends(require_org_role(MembershipRole.ADMIN)),
+    current_user: User = Depends(get_current_active_user),
 ) -> MembershipRead:
     try:
-        return add_member(db, organization, member_in.email, member_in.role, caller_membership.role)
+        return add_member(
+            db,
+            organization,
+            member_in.email,
+            member_in.role,
+            caller_membership.role,
+            actor=current_user,
+        )
     except UserNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except AlreadyMemberError as exc:
@@ -70,10 +84,13 @@ def update_role(
     db: Session = Depends(get_db),
     organization: Organization = Depends(get_organization_or_404),
     caller_membership: Membership = Depends(require_org_role(MembershipRole.ADMIN)),
+    current_user: User = Depends(get_current_active_user),
 ) -> MembershipRead:
     target = _get_target_membership_or_404(db, organization, membership_id)
     try:
-        return update_member_role(db, target, role_in.role, caller_membership.role)
+        return update_member_role(
+            db, target, role_in.role, caller_membership.role, actor=current_user
+        )
     except LastOwnerError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except InsufficientRoleError as exc:
@@ -86,6 +103,7 @@ def remove(
     db: Session = Depends(get_db),
     organization: Organization = Depends(get_organization_or_404),
     caller_membership: Membership = Depends(require_org_member),
+    current_user: User = Depends(get_current_active_user),
 ) -> None:
     target = _get_target_membership_or_404(db, organization, membership_id)
 
@@ -98,6 +116,6 @@ def remove(
         )
 
     try:
-        remove_member(db, target)
+        remove_member(db, target, actor=current_user)
     except LastOwnerError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc

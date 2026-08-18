@@ -154,12 +154,14 @@ def restore(
 @router.delete("/{task_id}/purge", status_code=status.HTTP_204_NO_CONTENT)
 def purge(
     db: Session = Depends(get_db),
+    project: Project = Depends(get_project_or_404),
     task: Task = Depends(get_deleted_task_or_404),
     _membership: Membership = Depends(require_org_role(MembershipRole.OWNER)),
+    current_user: User = Depends(get_current_active_user),
 ) -> None:
     """Irreversibly delete a task with its comments, activity and attachments."""
     if not task.is_deleted:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Delete the task before purging it"
         )
-    purge_task(db, task)
+    purge_task(db, project, task, current_user)

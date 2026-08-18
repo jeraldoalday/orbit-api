@@ -4,12 +4,13 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_organization_or_404, require_org_role
+from app.api.deps import get_current_active_user, get_organization_or_404, require_org_role
 from app.core.config import get_settings
 from app.core.webhook_url import InvalidWebhookUrlError
 from app.db.session import get_db
 from app.models.membership import Membership, MembershipRole
 from app.models.organization import Organization
+from app.models.user import User
 from app.models.webhook import DeliveryStatus, WebhookDelivery, WebhookSubscription
 from app.schemas.webhook import (
     WebhookDeliveryRead,
@@ -64,12 +65,14 @@ def create(
     subscription_in: WebhookSubscriptionCreate,
     db: Session = Depends(get_db),
     organization: Organization = Depends(get_organization_or_404),
+    current_user: User = Depends(get_current_active_user),
 ) -> WebhookSubscriptionWithSecret:
     try:
         return create_subscription(
             db,
             organization,
             subscription_in,
+            actor=current_user,
             require_https=settings.is_production,
             resolve_dns=settings.webhook_validate_dns,
             max_per_org=settings.webhook_max_per_org,
@@ -104,12 +107,14 @@ def update(
     subscription_in: WebhookSubscriptionUpdate,
     db: Session = Depends(get_db),
     subscription: WebhookSubscription = Depends(get_subscription_or_404),
+    current_user: User = Depends(get_current_active_user),
 ) -> WebhookSubscriptionRead:
     try:
         return update_subscription(
             db,
             subscription,
             subscription_in,
+            actor=current_user,
             require_https=settings.is_production,
             resolve_dns=settings.webhook_validate_dns,
         )
@@ -124,16 +129,18 @@ def rotate(
     db: Session = Depends(get_db),
     subscription: WebhookSubscription = Depends(get_subscription_or_404),
     _membership: Membership = Depends(require_org_role(MembershipRole.OWNER)),
+    current_user: User = Depends(get_current_active_user),
 ) -> WebhookSubscriptionWithSecret:
-    return rotate_secret(db, subscription)
+    return rotate_secret(db, subscription, current_user)
 
 
 @router.delete("/{subscription_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete(
     db: Session = Depends(get_db),
     subscription: WebhookSubscription = Depends(get_subscription_or_404),
+    current_user: User = Depends(get_current_active_user),
 ) -> None:
-    delete_subscription(db, subscription)
+    delete_subscription(db, subscription, current_user)
 
 
 def _get_delivery_or_404(

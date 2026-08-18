@@ -5,6 +5,7 @@ from typing import Literal, Optional
 from sqlalchemy import asc, case, desc, select
 from sqlalchemy.orm import Session
 
+from app.models.audit_log import AuditAction, AuditResource
 from app.models.notification import NotificationType
 from app.models.project import Project
 from app.models.task import Task, TaskPriority, TaskStatus
@@ -13,6 +14,7 @@ from app.models.task_label import TaskLabel
 from app.models.user import User
 from app.models.webhook import WebhookEvent
 from app.schemas.task import TaskCreate, TaskUpdate
+from app.services.audit_service import record_audit
 from app.services.membership_service import get_membership
 from app.services.notification_service import create_notification
 from app.services.task_activity_service import record_activity
@@ -62,6 +64,20 @@ def _notify_assignee(
         task_id=task.id,
         data={"task_title": task.title, "project_id": str(project.id)},
         commit=False,
+    )
+
+
+def _audit_task(
+    db: Session, project: Project, task: Task, action: AuditAction, actor: Optional[User]
+) -> None:
+    record_audit(
+        db,
+        organization_id=project.organization_id,
+        action=action,
+        resource_type=AuditResource.TASK,
+        actor=actor,
+        resource_id=task.id,
+        data={"title": task.title, "project_id": str(project.id)},
     )
 
 
@@ -212,6 +228,7 @@ def soft_delete_task(
     db: Session, project: Project, task: Task, actor: Optional[User] = None
 ) -> Task:
     task.mark_deleted()
+    _audit_task(db, project, task, AuditAction.TASK_DELETED, actor)
     emit_task_event(db, project, task, WebhookEvent.TASK_DELETED, actor)
     db.commit()
     db.refresh(task)
@@ -220,6 +237,7 @@ def soft_delete_task(
 
 def restore_task(db: Session, project: Project, task: Task, actor: Optional[User] = None) -> Task:
     task.mark_restored()
+    _audit_task(db, project, task, AuditAction.TASK_RESTORED, actor)
     # A restore is a change to the task the same way a status flip is, so it
     # goes out as task.updated rather than needing an event of its own.
     emit_task_event(
@@ -230,7 +248,10 @@ def restore_task(db: Session, project: Project, task: Task, actor: Optional[User
     return task
 
 
-def purge_task(db: Session, task: Task) -> None:
+def purge_task(
+    db: Session, project: Project, task: Task, actor: Optional[User] = None
+) -> None:
     """Delete for real, taking the task's comments, activity and files with it."""
+    _audit_task(db, project, task, AuditAction.TASK_PURGED, actor)
     db.delete(task)
     db.commit()

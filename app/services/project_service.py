@@ -4,12 +4,38 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.audit_log import AuditAction, AuditResource
 from app.models.organization import Organization
 from app.models.project import Project
+from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate
+from app.services.audit_service import record_audit
 
 
-def create_project(db: Session, organization: Organization, project_in: ProjectCreate) -> Project:
+def _audit(
+    db: Session,
+    project: Project,
+    action: AuditAction,
+    actor: Optional[User],
+    data: Optional[dict] = None,
+) -> None:
+    record_audit(
+        db,
+        organization_id=project.organization_id,
+        action=action,
+        resource_type=AuditResource.PROJECT,
+        actor=actor,
+        resource_id=project.id,
+        data={"name": project.name, **(data or {})},
+    )
+
+
+def create_project(
+    db: Session,
+    organization: Organization,
+    project_in: ProjectCreate,
+    actor: Optional[User] = None,
+) -> Project:
     project = Project(
         organization_id=organization.id,
         name=project_in.name,
@@ -17,6 +43,8 @@ def create_project(db: Session, organization: Organization, project_in: ProjectC
         visibility=project_in.visibility,
     )
     db.add(project)
+    db.flush()
+    _audit(db, project, AuditAction.PROJECT_CREATED, actor)
     db.commit()
     db.refresh(project)
     return project
@@ -54,7 +82,9 @@ def list_deleted_projects(
     return list(db.execute(stmt).scalars().all())
 
 
-def update_project(db: Session, project: Project, project_in: ProjectUpdate) -> Project:
+def update_project(
+    db: Session, project: Project, project_in: ProjectUpdate, actor: Optional[User] = None
+) -> Project:
     # `description` is nullable, so an explicit null has to be told apart from an
     # omitted key: checking `is not None` alone made the field impossible to clear.
     fields_set = project_in.model_fields_set
@@ -64,33 +94,48 @@ def update_project(db: Session, project: Project, project_in: ProjectUpdate) -> 
     if "description" in fields_set:
         project.description = project_in.description
     if project_in.visibility is not None:
+        # Visibility is the one field that changes who can see the project at
+        # all, so the trail records what it moved between.
+        _audit(
+            db,
+            project,
+            AuditAction.PROJECT_UPDATED,
+            actor,
+            {"visibility": {"from": project.visibility.value, "to": project_in.visibility.value}},
+        )
         project.visibility = project_in.visibility
     db.commit()
     db.refresh(project)
     return project
 
 
-def soft_delete_project(db: Session, project: Project) -> Project:
+def soft_delete_project(db: Session, project: Project, actor: Optional[User] = None) -> Project:
     """Hide a project without destroying it or anything under it."""
     project.mark_deleted()
+    _audit(db, project, AuditAction.PROJECT_DELETED, actor)
     db.commit()
     db.refresh(project)
     return project
 
 
-def restore_project(db: Session, project: Project) -> Project:
+def restore_project(db: Session, project: Project, actor: Optional[User] = None) -> Project:
     project.mark_restored()
+    _audit(db, project, AuditAction.PROJECT_RESTORED, actor)
     db.commit()
     db.refresh(project)
     return project
 
 
-def purge_project(db: Session, project: Project) -> None:
+def purge_project(db: Session, project: Project, actor: Optional[User] = None) -> None:
     """Delete for real, taking every task, comment and attachment with it.
 
     Unlike the soft delete this is unrecoverable, which is why the route that
     reaches it is limited to org owners and refuses a project that has not been
     soft-deleted first.
     """
+    # The entry is written before the row goes away, and survives it: the audit
+    # log holds a plain UUID rather than a foreign key precisely so a purge
+    # can't take its own record with it.
+    _audit(db, project, AuditAction.PROJECT_PURGED, actor)
     db.delete(project)
     db.commit()

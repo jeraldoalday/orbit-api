@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.v1.routers import (
     attachments,
+    audit_logs,
     auth,
     health,
     invitations,
@@ -37,3 +38,4 @@ api_router.include_router(invitations.accept_router)
 api_router.include_router(notifications.router)
 api_router.include_router(search.router)
 api_router.include_router(webhooks.router)
+api_router.include_router(audit_logs.router)

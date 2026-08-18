@@ -4,10 +4,13 @@ from typing import Optional
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.models.audit_log import AuditAction, AuditResource
 from app.models.membership import Membership, MembershipRole, role_at_least
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.project_member import ProjectMember
+from app.models.user import User
+from app.services.audit_service import record_audit
 from app.services.auth_service import get_user_by_email
 
 
@@ -70,6 +73,7 @@ def add_member(
     email: str,
     role: MembershipRole,
     acting_role: MembershipRole,
+    actor: Optional[User] = None,
 ) -> Membership:
     if not role_at_least(acting_role, role):
         raise InsufficientRoleError(
@@ -85,13 +89,27 @@ def add_member(
 
     membership = Membership(organization_id=organization.id, user_id=user.id, role=role)
     db.add(membership)
+    db.flush()
+    record_audit(
+        db,
+        organization_id=organization.id,
+        action=AuditAction.MEMBER_ADDED,
+        resource_type=AuditResource.MEMBERSHIP,
+        actor=actor,
+        resource_id=membership.id,
+        data={"email": user.email, "role": role.value},
+    )
     db.commit()
     db.refresh(membership)
     return membership
 
 
 def update_member_role(
-    db: Session, membership: Membership, new_role: MembershipRole, acting_role: MembershipRole
+    db: Session,
+    membership: Membership,
+    new_role: MembershipRole,
+    acting_role: MembershipRole,
+    actor: Optional[User] = None,
 ) -> Membership:
     if not role_at_least(acting_role, new_role):
         raise InsufficientRoleError(
@@ -105,13 +123,22 @@ def update_member_role(
     ):
         raise LastOwnerError("Cannot demote the last remaining owner")
 
+    record_audit(
+        db,
+        organization_id=membership.organization_id,
+        action=AuditAction.MEMBER_ROLE_CHANGED,
+        resource_type=AuditResource.MEMBERSHIP,
+        actor=actor,
+        resource_id=membership.id,
+        data={"from": membership.role.value, "to": new_role.value},
+    )
     membership.role = new_role
     db.commit()
     db.refresh(membership)
     return membership
 
 
-def remove_member(db: Session, membership: Membership) -> None:
+def remove_member(db: Session, membership: Membership, actor: Optional[User] = None) -> None:
     if (
         membership.role == MembershipRole.OWNER
         and count_owners(db, membership.organization_id) <= 1
@@ -132,5 +159,14 @@ def remove_member(db: Session, membership: Membership) -> None:
         )
     )
 
+    record_audit(
+        db,
+        organization_id=membership.organization_id,
+        action=AuditAction.MEMBER_REMOVED,
+        resource_type=AuditResource.MEMBERSHIP,
+        actor=actor,
+        resource_id=membership.id,
+        data={"user_id": str(membership.user_id), "role": membership.role.value},
+    )
     db.delete(membership)
     db.commit()

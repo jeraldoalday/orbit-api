@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
+    get_current_active_user,
     get_deleted_project_or_404,
     get_organization_or_404,
     get_project_or_404,
@@ -15,6 +16,7 @@ from app.models.membership import Membership, MembershipRole
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.project_member import ProjectRole
+from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectRead, ProjectUpdate
 from app.services.project_member_service import list_visible_projects
 from app.services.project_service import (
@@ -37,8 +39,9 @@ def create(
     db: Session = Depends(get_db),
     organization: Organization = Depends(get_organization_or_404),
     _membership: Membership = Depends(require_org_member),
+    current_user: User = Depends(get_current_active_user),
 ) -> ProjectRead:
-    return create_project(db, organization, project_in)
+    return create_project(db, organization, project_in, current_user)
 
 
 @router.get("", response_model=list[ProjectRead])
@@ -81,6 +84,7 @@ def update(
     db: Session = Depends(get_db),
     project: Project = Depends(get_project_or_404),
     role: ProjectRole = Depends(require_project_role(ProjectRole.EDITOR)),
+    current_user: User = Depends(get_current_active_user),
 ) -> ProjectRead:
     # Editors maintain a project's content; flipping visibility decides who can
     # see it at all, so that stays a manager-level decision.
@@ -89,7 +93,7 @@ def update(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only a project manager can change project visibility",
         )
-    return update_project(db, project, project_in)
+    return update_project(db, project, project_in, current_user)
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -97,9 +101,10 @@ def delete(
     db: Session = Depends(get_db),
     project: Project = Depends(get_project_or_404),
     _membership: Membership = Depends(require_org_role(MembershipRole.ADMIN)),
+    current_user: User = Depends(get_current_active_user),
 ) -> None:
     """Soft-delete: the project vanishes from every read but stays restorable."""
-    soft_delete_project(db, project)
+    soft_delete_project(db, project, current_user)
 
 
 @router.post("/{project_id}/restore", response_model=ProjectRead)
@@ -107,10 +112,11 @@ def restore(
     db: Session = Depends(get_db),
     project: Project = Depends(get_deleted_project_or_404),
     _membership: Membership = Depends(require_org_role(MembershipRole.ADMIN)),
+    current_user: User = Depends(get_current_active_user),
 ) -> ProjectRead:
     if not project.is_deleted:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project is not deleted")
-    return restore_project(db, project)
+    return restore_project(db, project, current_user)
 
 
 @router.delete("/{project_id}/purge", status_code=status.HTTP_204_NO_CONTENT)
@@ -118,6 +124,7 @@ def purge(
     db: Session = Depends(get_db),
     project: Project = Depends(get_deleted_project_or_404),
     _membership: Membership = Depends(require_org_role(MembershipRole.OWNER)),
+    current_user: User = Depends(get_current_active_user),
 ) -> None:
     """Delete a project and everything under it, irreversibly.
 
@@ -130,4 +137,4 @@ def purge(
             status_code=status.HTTP_409_CONFLICT,
             detail="Delete the project before purging it",
         )
-    purge_project(db, project)
+    purge_project(db, project, current_user)

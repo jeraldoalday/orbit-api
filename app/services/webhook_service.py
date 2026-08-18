@@ -6,13 +6,34 @@ from sqlalchemy.orm import Session
 
 from app.core.webhook_signing import generate_secret
 from app.core.webhook_url import validate_webhook_url
+from app.models.audit_log import AuditAction, AuditResource
 from app.models.organization import Organization
+from app.models.user import User
 from app.models.webhook import WebhookEvent, WebhookSubscription
 from app.schemas.webhook import WebhookSubscriptionCreate, WebhookSubscriptionUpdate
+from app.services.audit_service import record_audit
 
 
 class SubscriptionLimitError(Exception):
     """Raised when an organization already has as many subscriptions as it may."""
+
+
+def _audit(
+    db: Session,
+    subscription: WebhookSubscription,
+    action: AuditAction,
+    actor: Optional[User],
+    data: Optional[dict] = None,
+) -> None:
+    record_audit(
+        db,
+        organization_id=subscription.organization_id,
+        action=action,
+        resource_type=AuditResource.WEBHOOK,
+        actor=actor,
+        resource_id=subscription.id,
+        data=data,
+    )
 
 
 def count_subscriptions(db: Session, organization_id: uuid.UUID) -> int:
@@ -29,6 +50,7 @@ def create_subscription(
     organization: Organization,
     subscription_in: WebhookSubscriptionCreate,
     *,
+    actor: Optional[User] = None,
     require_https: bool = False,
     resolve_dns: bool = True,
     max_per_org: int = 10,
@@ -51,6 +73,8 @@ def create_subscription(
         is_active=True,
     )
     db.add(subscription)
+    db.flush()
+    _audit(db, subscription, AuditAction.WEBHOOK_CREATED, actor, {"url": subscription.url})
     db.commit()
     db.refresh(subscription)
     return subscription
@@ -105,6 +129,7 @@ def update_subscription(
     subscription: WebhookSubscription,
     subscription_in: WebhookSubscriptionUpdate,
     *,
+    actor: Optional[User] = None,
     require_https: bool = False,
     resolve_dns: bool = True,
 ) -> WebhookSubscription:
@@ -121,12 +146,21 @@ def update_subscription(
     if subscription_in.is_active is not None:
         subscription.is_active = subscription_in.is_active
 
+    _audit(
+        db,
+        subscription,
+        AuditAction.WEBHOOK_UPDATED,
+        actor,
+        {"fields": sorted(fields_set)},
+    )
     db.commit()
     db.refresh(subscription)
     return subscription
 
 
-def rotate_secret(db: Session, subscription: WebhookSubscription) -> WebhookSubscription:
+def rotate_secret(
+    db: Session, subscription: WebhookSubscription, actor: Optional[User] = None
+) -> WebhookSubscription:
     """Issue a new secret, invalidating the old one immediately.
 
     There is deliberately no overlap window: a leaked secret has to stop
@@ -134,11 +168,17 @@ def rotate_secret(db: Session, subscription: WebhookSubscription) -> WebhookSubs
     can be updated with the new value before rotating.
     """
     subscription.secret = generate_secret()
+    # The new secret is deliberately not in the audit entry: an audit trail
+    # that records credentials is a second place to steal them from.
+    _audit(db, subscription, AuditAction.WEBHOOK_SECRET_ROTATED, actor)
     db.commit()
     db.refresh(subscription)
     return subscription
 
 
-def delete_subscription(db: Session, subscription: WebhookSubscription) -> None:
+def delete_subscription(
+    db: Session, subscription: WebhookSubscription, actor: Optional[User] = None
+) -> None:
+    _audit(db, subscription, AuditAction.WEBHOOK_DELETED, actor, {"url": subscription.url})
     db.delete(subscription)
     db.commit()
