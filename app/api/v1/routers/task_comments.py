@@ -3,9 +3,15 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_active_user, get_task_or_404, require_org_member
+from app.api.deps import (
+    get_current_active_user,
+    get_task_or_404,
+    require_org_member,
+    require_project_role,
+)
 from app.db.session import get_db
 from app.models.membership import Membership, MembershipRole, role_at_least
+from app.models.project_member import ProjectRole
 from app.models.task import Task
 from app.models.user import User
 from app.schemas.task_comment import TaskCommentCreate, TaskCommentRead
@@ -28,7 +34,7 @@ def create(
     comment_in: TaskCommentCreate,
     db: Session = Depends(get_db),
     task: Task = Depends(get_task_or_404),
-    _membership: Membership = Depends(require_org_member),
+    _role: ProjectRole = Depends(require_project_role(ProjectRole.EDITOR)),
     current_user: User = Depends(get_current_active_user),
 ) -> TaskCommentRead:
     return create_comment(db, task.id, current_user, comment_in.body)
@@ -38,7 +44,7 @@ def create(
 def list_mine(
     db: Session = Depends(get_db),
     task: Task = Depends(get_task_or_404),
-    _membership: Membership = Depends(require_org_member),
+    _role: ProjectRole = Depends(require_project_role(ProjectRole.VIEWER)),
 ) -> list[TaskCommentRead]:
     return list_comments(db, task.id)
 
@@ -49,6 +55,7 @@ def delete(
     db: Session = Depends(get_db),
     task: Task = Depends(get_task_or_404),
     membership: Membership = Depends(require_org_member),
+    _role: ProjectRole = Depends(require_project_role(ProjectRole.VIEWER)),
     current_user: User = Depends(get_current_active_user),
 ) -> None:
     comment = get_comment(db, task.id, comment_id)
@@ -70,7 +77,7 @@ def delete(
 def timeline(
     db: Session = Depends(get_db),
     task: Task = Depends(get_task_or_404),
-    _membership: Membership = Depends(require_org_member),
+    _role: ProjectRole = Depends(require_project_role(ProjectRole.VIEWER)),
 ) -> list[TaskTimelineEntry]:
     entries = [
         TaskTimelineEntry(kind="comment", created_at=comment.created_at, comment=comment)

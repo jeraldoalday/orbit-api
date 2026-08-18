@@ -3,10 +3,14 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_organization_or_404, get_task_or_404, require_org_member
+from app.api.deps import (
+    get_organization_or_404,
+    get_task_or_404,
+    require_project_role,
+)
 from app.db.session import get_db
-from app.models.membership import Membership
 from app.models.organization import Organization
+from app.models.project_member import ProjectRole
 from app.models.task import Task
 from app.schemas.label import LabelRead
 from app.schemas.task_label import TaskLabelAttach
@@ -36,7 +40,7 @@ def _get_label_or_404(db: Session, organization: Organization, label_id: uuid.UU
 def list_mine(
     db: Session = Depends(get_db),
     task: Task = Depends(get_task_or_404),
-    _membership: Membership = Depends(require_org_member),
+    _role: ProjectRole = Depends(require_project_role(ProjectRole.VIEWER)),
 ) -> list[LabelRead]:
     return list_labels_for_task(db, task.id)
 
@@ -47,7 +51,7 @@ def attach(
     db: Session = Depends(get_db),
     organization: Organization = Depends(get_organization_or_404),
     task: Task = Depends(get_task_or_404),
-    _membership: Membership = Depends(require_org_member),
+    _role: ProjectRole = Depends(require_project_role(ProjectRole.EDITOR)),
 ) -> LabelRead:
     label = _get_label_or_404(db, organization, body.label_id)
     try:
@@ -63,7 +67,7 @@ def detach(
     db: Session = Depends(get_db),
     organization: Organization = Depends(get_organization_or_404),
     task: Task = Depends(get_task_or_404),
-    _membership: Membership = Depends(require_org_member),
+    _role: ProjectRole = Depends(require_project_role(ProjectRole.EDITOR)),
 ) -> None:
     label = _get_label_or_404(db, organization, label_id)
     try:

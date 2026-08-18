@@ -11,12 +11,14 @@ from app.models.label import Label
 from app.models.membership import Membership, MembershipRole, role_at_least
 from app.models.organization import Organization
 from app.models.project import Project
+from app.models.project_member import ProjectMember, ProjectRole, project_role_at_least
 from app.models.task import Task
 from app.models.user import User
 from app.services.auth_service import get_user_by_id
 from app.services.label_service import get_label
 from app.services.membership_service import get_membership
 from app.services.organization_service import get_organization
+from app.services.project_member_service import get_project_member_by_id, resolve_project_role
 from app.services.project_service import get_project
 from app.services.task_service import get_task
 
@@ -120,3 +122,42 @@ def get_label_or_404(
     if label is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Label not found")
     return label
+
+
+def require_project_role(minimum: ProjectRole) -> Callable[..., ProjectRole]:
+    """Guard a project endpoint on the caller's *effective* project role.
+
+    A restricted project the caller isn't on returns 404 rather than 403, for
+    the same reason `require_org_member` does: an error code that distinguishes
+    "exists but forbidden" from "does not exist" leaks the project's existence.
+    """
+
+    def dependency(
+        project: Project = Depends(get_project_or_404),
+        membership: Membership = Depends(require_org_member),
+        db: Session = Depends(get_db),
+    ) -> ProjectRole:
+        role = resolve_project_role(db, project, membership)
+        if role is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+        if not project_role_at_least(role, minimum):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions for this project",
+            )
+        return role
+
+    return dependency
+
+
+def get_project_member_or_404(
+    member_id: uuid.UUID,
+    project: Project = Depends(get_project_or_404),
+    db: Session = Depends(get_db),
+) -> ProjectMember:
+    project_member = get_project_member_by_id(db, project.id, member_id)
+    if project_member is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project member not found"
+        )
+    return project_member

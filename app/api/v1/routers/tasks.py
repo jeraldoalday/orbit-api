@@ -9,13 +9,14 @@ from app.api.deps import (
     get_current_active_user,
     get_project_or_404,
     get_task_or_404,
-    require_org_member,
     require_org_role,
+    require_project_role,
 )
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.membership import Membership, MembershipRole
 from app.models.project import Project
+from app.models.project_member import ProjectRole
 from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskRead, TaskUpdate
@@ -37,7 +38,7 @@ def create(
     task_in: TaskCreate,
     db: Session = Depends(get_db),
     project: Project = Depends(get_project_or_404),
-    _membership: Membership = Depends(require_org_member),
+    _role: ProjectRole = Depends(require_project_role(ProjectRole.EDITOR)),
     current_user: User = Depends(get_current_active_user),
 ) -> TaskRead:
     try:
@@ -52,7 +53,7 @@ def create(
 def list_mine(
     db: Session = Depends(get_db),
     project: Project = Depends(get_project_or_404),
-    _membership: Membership = Depends(require_org_member),
+    _role: ProjectRole = Depends(require_project_role(ProjectRole.VIEWER)),
     status_: Optional[TaskStatus] = Query(default=None, alias="status"),
     assignee_id: Optional[uuid.UUID] = None,
     priority: Optional[TaskPriority] = None,
@@ -85,7 +86,7 @@ def list_mine(
 @router.get("/{task_id}", response_model=TaskRead)
 def get(
     task: Task = Depends(get_task_or_404),
-    _membership: Membership = Depends(require_org_member),
+    _role: ProjectRole = Depends(require_project_role(ProjectRole.VIEWER)),
 ) -> TaskRead:
     return task
 
@@ -96,7 +97,7 @@ def update(
     db: Session = Depends(get_db),
     project: Project = Depends(get_project_or_404),
     task: Task = Depends(get_task_or_404),
-    _membership: Membership = Depends(require_org_member),
+    _role: ProjectRole = Depends(require_project_role(ProjectRole.EDITOR)),
     current_user: User = Depends(get_current_active_user),
 ) -> TaskRead:
     try:

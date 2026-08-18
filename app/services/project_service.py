@@ -14,6 +14,7 @@ def create_project(db: Session, organization: Organization, project_in: ProjectC
         organization_id=organization.id,
         name=project_in.name,
         description=project_in.description,
+        visibility=project_in.visibility,
     )
     db.add(project)
     db.commit()
@@ -40,6 +41,8 @@ def update_project(db: Session, project: Project, project_in: ProjectUpdate) -> 
         project.name = project_in.name
     if project_in.description is not None:
         project.description = project_in.description
+    if project_in.visibility is not None:
+        project.visibility = project_in.visibility
     db.commit()
     db.refresh(project)
     return project
