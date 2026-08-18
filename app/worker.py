@@ -57,6 +57,7 @@ def run_once(transport: Optional[WebhookTransport] = None) -> DispatchSummary:
             max_attempts=settings.webhook_max_attempts,
             timeout_seconds=settings.webhook_timeout_seconds,
             backoff_base_seconds=settings.webhook_backoff_base_seconds,
+            lease_seconds=settings.webhook_lease_seconds,
             verify_target=settings.webhook_validate_dns,
         )
     finally:

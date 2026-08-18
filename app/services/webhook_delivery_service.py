@@ -122,7 +122,45 @@ def due_deliveries(
         .order_by(WebhookDelivery.created_at, WebhookDelivery.id)
         .limit(limit)
     )
+
+    # On Postgres, skip rows another worker is already holding rather than
+    # blocking on them. SQLite has neither, and single-worker runs never
+    # contend, so the lease below is what actually keeps workers apart.
+    if db.get_bind().dialect.name == "postgresql":
+        stmt = stmt.with_for_update(skip_locked=True)
+
     return list(db.execute(stmt).scalars().all())
+
+
+def claim_due_deliveries(
+    db: Session,
+    *,
+    limit: int = 50,
+    lease_seconds: int = 120,
+    now: Optional[datetime] = None,
+) -> list[WebhookDelivery]:
+    """Take ownership of a batch before posting any of it.
+
+    Pushing next_attempt_at into the future acts as a visibility timeout: a
+    second worker polling the same table sees these rows as not yet due and
+    moves on, so one event is not delivered twice by two processes. If this
+    worker dies mid-batch the lease simply expires and the rows come back —
+    at-least-once delivery, which is what a receiver has to assume anyway.
+
+    The lease must outlast one HTTP attempt, or a slow endpoint would let the
+    row be picked up again while the first attempt is still in flight.
+    """
+    moment = now or _utcnow()
+    claimed = due_deliveries(db, limit=limit, now=moment)
+    if not claimed:
+        return []
+
+    leased_until = moment + timedelta(seconds=lease_seconds)
+    for delivery in claimed:
+        delivery.next_attempt_at = leased_until
+    db.commit()
+
+    return claimed
 
 
 def backoff_delay(attempts: int, base_seconds: int) -> timedelta:
@@ -256,11 +294,12 @@ def dispatch_pending(
     timeout_seconds: float = 10.0,
     backoff_base_seconds: int = 60,
     verify_target: bool = True,
+    lease_seconds: int = 120,
     now: Optional[datetime] = None,
 ) -> DispatchSummary:
     """Run one pass over the due deliveries."""
     moment = now or _utcnow()
-    pending = due_deliveries(db, limit=limit, now=moment)
+    pending = claim_due_deliveries(db, limit=limit, lease_seconds=lease_seconds, now=moment)
 
     succeeded = failed = retrying = 0
     for delivery in pending:

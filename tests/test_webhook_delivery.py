@@ -18,6 +18,7 @@ from app.services.webhook_delivery_service import (
     attempt_delivery,
     backoff_delay,
     build_envelope,
+    claim_due_deliveries,
     dispatch_pending,
     due_deliveries,
     enqueue_event,
@@ -312,8 +313,9 @@ def test_due_deliveries_returns_the_oldest_first(db, org, subscription):
 def test_requeue_resets_a_failed_delivery(db, org, subscription):
     delivery = _enqueue(db, org)[0]
     for _ in range(2):
-        attempt_delivery(db, RecordingTransport(status_code=500), delivery, max_attempts=2,
-                         verify_target=False)
+        attempt_delivery(
+            db, RecordingTransport(status_code=500), delivery, max_attempts=2, verify_target=False
+        )
     assert delivery.status == DeliveryStatus.FAILED
 
     requeue_delivery(db, delivery)
@@ -322,3 +324,70 @@ def test_requeue_resets_a_failed_delivery(db, org, subscription):
     assert delivery.attempts == 0
     assert delivery.error is None
     assert delivery.next_attempt_at is None
+
+
+# --- two workers must not deliver the same event twice ----------------------
+
+
+def test_a_claimed_batch_is_invisible_to_a_second_worker(db, org, subscription):
+    """Two workers polling the same table must not both post the same event."""
+    _enqueue(db, org)
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+    claimed = claim_due_deliveries(db, lease_seconds=120, now=now)
+    still_due = due_deliveries(db, now=now)
+
+    assert len(claimed) == 1
+    assert still_due == []
+
+
+def test_a_lease_expires_so_a_dead_workers_batch_comes_back(db, org, subscription):
+    _enqueue(db, org)
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    claim_due_deliveries(db, lease_seconds=120, now=now)
+
+    # The worker never got as far as attempting it; once the lease lapses the
+    # row is due again rather than stuck pending forever.
+    assert due_deliveries(db, now=now + timedelta(seconds=60)) == []
+    assert len(due_deliveries(db, now=now + timedelta(seconds=121))) == 1
+
+
+def test_claiming_does_not_count_as_an_attempt(db, org, subscription):
+    delivery = _enqueue(db, org)[0]
+
+    claim_due_deliveries(db, now=datetime(2026, 1, 1, tzinfo=timezone.utc))
+
+    db.refresh(delivery)
+    assert delivery.attempts == 0
+    assert delivery.status == DeliveryStatus.PENDING
+
+
+def test_a_successful_delivery_clears_its_lease(db, org, subscription):
+    delivery = _enqueue(db, org)[0]
+
+    _dispatch(db, RecordingTransport(), now=datetime(2026, 1, 1, tzinfo=timezone.utc))
+
+    db.refresh(delivery)
+    assert delivery.status == DeliveryStatus.SUCCEEDED
+    assert delivery.next_attempt_at is None
+
+
+def test_a_failed_delivery_replaces_its_lease_with_the_backoff(db, org, subscription):
+    delivery = _enqueue(db, org)[0]
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+    _dispatch(
+        db,
+        RecordingTransport(status_code=500),
+        now=now,
+        backoff_base_seconds=30,
+        lease_seconds=600,
+    )
+
+    db.refresh(delivery)
+    # The backoff wins over the lease, so a failure isn't held for ten minutes.
+    assert _as_utc(delivery.next_attempt_at) == now + timedelta(seconds=30)
+
+
+def test_claiming_an_empty_queue_is_a_no_op(db, org, subscription):
+    assert claim_due_deliveries(db) == []

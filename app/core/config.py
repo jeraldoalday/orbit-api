@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # Retries back off as base * 2 ** (attempt - 1): 60s, 2m, 4m, 8m.
     webhook_backoff_base_seconds: int = 60
     webhook_batch_size: int = 50
+    # How long a worker owns a claimed batch. Must outlast one HTTP attempt,
+    # or a slow endpoint lets a second worker pick the row up mid-flight.
+    webhook_lease_seconds: int = 120
     # Resolving a target hostname is a best-effort SSRF filter; it is turned
     # off in tests, where no name should be looked up at all.
     webhook_validate_dns: bool = True
