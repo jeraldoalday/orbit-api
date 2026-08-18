@@ -10,6 +10,7 @@ from app.api.v1.routers import (
     organizations,
     project_members,
     projects,
+    search,
     task_comments,
     task_labels,
     tasks,
@@ -31,3 +32,4 @@ api_router.include_router(labels.router)
 api_router.include_router(invitations.router)
 api_router.include_router(invitations.accept_router)
 api_router.include_router(notifications.router)
+api_router.include_router(search.router)
