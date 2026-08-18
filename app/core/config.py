@@ -33,6 +33,8 @@ class Settings(BaseSettings):
 
     cors_origins: Optional[str] = None
 
+    log_level: str = "INFO"
+
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
