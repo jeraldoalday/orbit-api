@@ -1,19 +1,20 @@
 import uuid
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from app.models.project import ProjectVisibility
+from app.schemas.fields import NameStr
 
 
 class ProjectCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
+    name: NameStr
     description: Optional[str] = None
     visibility: ProjectVisibility = ProjectVisibility.OPEN
 
 
 class ProjectUpdate(BaseModel):
-    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    name: Optional[NameStr] = None
     description: Optional[str] = None
     visibility: Optional[ProjectVisibility] = None
 

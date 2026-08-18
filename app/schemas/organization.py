@@ -1,15 +1,17 @@
 import uuid
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
+
+from app.schemas.fields import NameStr
 
 
 class OrganizationCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
+    name: NameStr
 
 
 class OrganizationUpdate(BaseModel):
-    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    name: Optional[NameStr] = None
 
 
 class OrganizationRead(BaseModel):

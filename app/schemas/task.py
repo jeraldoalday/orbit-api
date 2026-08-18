@@ -2,13 +2,14 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from app.models.task import TaskPriority, TaskStatus
+from app.schemas.fields import NameStr
 
 
 class TaskCreate(BaseModel):
-    title: str = Field(min_length=1, max_length=200)
+    title: NameStr
     description: Optional[str] = None
     assignee_id: Optional[uuid.UUID] = None
     priority: TaskPriority = TaskPriority.MEDIUM
@@ -16,7 +17,7 @@ class TaskCreate(BaseModel):
 
 
 class TaskUpdate(BaseModel):
-    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    title: Optional[NameStr] = None
     description: Optional[str] = None
     status: Optional[TaskStatus] = None
     assignee_id: Optional[uuid.UUID] = None

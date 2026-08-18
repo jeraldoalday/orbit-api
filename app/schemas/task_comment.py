@@ -2,13 +2,14 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
+from app.schemas.fields import BodyStr
 from app.schemas.user import UserRead
 
 
 class TaskCommentCreate(BaseModel):
-    body: str = Field(min_length=1, max_length=5000)
+    body: BodyStr
 
 
 class TaskCommentRead(BaseModel):

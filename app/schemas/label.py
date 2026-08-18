@@ -2,9 +2,11 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.fields import LabelNameStr
+
 
 class LabelCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=50)
+    name: LabelNameStr
     color: str = Field(default="#6b7280", pattern=r"^#[0-9a-fA-F]{6}$")
 
 
