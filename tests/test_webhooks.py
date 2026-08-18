@@ -1,4 +1,11 @@
+import uuid
+
 import pytest
+
+from app.db.session import get_db
+from app.main import app
+from app.models.webhook import WebhookEvent
+from app.services.webhook_delivery_service import enqueue_event
 
 
 def _register_and_login(
@@ -202,3 +209,110 @@ def test_another_orgs_subscription_is_not_reachable(client, setup):
     response = client.get(_url(other_org["id"], f"/{created['id']}"), headers=headers)
 
     assert response.status_code == 404
+
+
+# --- delivery inspection endpoints ------------------------------------------
+
+
+def _enqueue_delivery(org_id):
+    """Queue one event through the service layer, as an emitting route would."""
+    session = next(app.dependency_overrides[get_db]())
+    return enqueue_event(session, uuid.UUID(org_id), WebhookEvent.TASK_CREATED, {"task_id": "x"})
+
+
+def test_deliveries_start_empty(client, setup):
+    headers, org = setup
+    created = _create_webhook(client, headers, org["id"]).json()
+
+    listed = client.get(_url(org["id"], f"/{created['id']}/deliveries"), headers=headers)
+
+    assert listed.status_code == 200
+    assert listed.json() == []
+
+
+def test_a_queued_delivery_is_listed(client, setup):
+    headers, org = setup
+    created = _create_webhook(client, headers, org["id"]).json()
+    _enqueue_delivery(org["id"])
+
+    listed = client.get(_url(org["id"], f"/{created['id']}/deliveries"), headers=headers).json()
+
+    assert len(listed) == 1
+    assert listed[0]["event_type"] == "task.created"
+    assert listed[0]["status"] == "pending"
+    assert listed[0]["attempts"] == 0
+    # The list view is a summary; the payload is only on the detail view.
+    assert "payload" not in listed[0]
+
+
+def test_a_single_delivery_includes_its_payload(client, setup):
+    headers, org = setup
+    created = _create_webhook(client, headers, org["id"]).json()
+    delivery = _enqueue_delivery(org["id"])[0]
+
+    detail = client.get(
+        _url(org["id"], f"/{created['id']}/deliveries/{delivery.id}"), headers=headers
+    ).json()
+
+    assert detail["payload"]["event"] == "task.created"
+    assert detail["payload"]["data"] == {"task_id": "x"}
+
+
+def test_deliveries_can_be_filtered_by_status(client, setup):
+    headers, org = setup
+    created = _create_webhook(client, headers, org["id"]).json()
+    _enqueue_delivery(org["id"])
+
+    pending = client.get(
+        _url(org["id"], f"/{created['id']}/deliveries?status=pending"), headers=headers
+    ).json()
+    succeeded = client.get(
+        _url(org["id"], f"/{created['id']}/deliveries?status=succeeded"), headers=headers
+    ).json()
+
+    assert len(pending) == 1
+    assert succeeded == []
+
+
+def test_retrying_a_delivery_puts_it_back_in_the_queue(client, setup):
+    headers, org = setup
+    created = _create_webhook(client, headers, org["id"]).json()
+    delivery = _enqueue_delivery(org["id"])[0]
+    delivery.attempts = 4
+    delivery.error = "boom"
+
+    retried = client.post(
+        _url(org["id"], f"/{created['id']}/deliveries/{delivery.id}/retry"), headers=headers
+    ).json()
+
+    assert retried["status"] == "pending"
+    assert retried["attempts"] == 0
+    assert retried["error"] is None
+
+
+def test_an_unknown_delivery_is_404(client, setup):
+    headers, org = setup
+    created = _create_webhook(client, headers, org["id"]).json()
+
+    response = client.get(
+        _url(
+            org["id"],
+            f"/{created['id']}/deliveries/00000000-0000-0000-0000-000000000000",
+        ),
+        headers=headers,
+    )
+
+    assert response.status_code == 404
+
+
+def test_a_plain_member_cannot_read_deliveries(client, setup):
+    owner_headers, org = setup
+    created = _create_webhook(client, owner_headers, org["id"]).json()
+    member_headers = _register_and_login(client, email="member@example.com")
+    _add_org_member(client, owner_headers, org["id"], "member@example.com")
+
+    response = client.get(
+        _url(org["id"], f"/{created['id']}/deliveries"), headers=member_headers
+    )
+
+    assert response.status_code == 403

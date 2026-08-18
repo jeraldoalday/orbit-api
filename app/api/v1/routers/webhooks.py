@@ -1,4 +1,5 @@
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -9,12 +10,19 @@ from app.core.webhook_url import InvalidWebhookUrlError
 from app.db.session import get_db
 from app.models.membership import Membership, MembershipRole
 from app.models.organization import Organization
-from app.models.webhook import WebhookSubscription
+from app.models.webhook import DeliveryStatus, WebhookDelivery, WebhookSubscription
 from app.schemas.webhook import (
+    WebhookDeliveryRead,
+    WebhookDeliveryWithPayload,
     WebhookSubscriptionCreate,
     WebhookSubscriptionRead,
     WebhookSubscriptionUpdate,
     WebhookSubscriptionWithSecret,
+)
+from app.services.webhook_delivery_service import (
+    get_delivery,
+    list_deliveries,
+    requeue_delivery,
 )
 from app.services.webhook_service import (
     SubscriptionLimitError,
@@ -126,3 +134,48 @@ def delete(
     subscription: WebhookSubscription = Depends(get_subscription_or_404),
 ) -> None:
     delete_subscription(db, subscription)
+
+
+def _get_delivery_or_404(
+    delivery_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    subscription: WebhookSubscription = Depends(get_subscription_or_404),
+) -> WebhookDelivery:
+    delivery = get_delivery(db, subscription.id, delivery_id)
+    if delivery is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Delivery not found")
+    return delivery
+
+
+@router.get("/{subscription_id}/deliveries", response_model=list[WebhookDeliveryRead])
+def list_subscription_deliveries(
+    db: Session = Depends(get_db),
+    subscription: WebhookSubscription = Depends(get_subscription_or_404),
+    delivery_status: Optional[DeliveryStatus] = Query(default=None, alias="status"),
+    limit: int = Query(default=settings.list_default_limit, ge=1, le=settings.list_max_limit),
+    offset: int = Query(default=0, ge=0),
+) -> list[WebhookDeliveryRead]:
+    return list_deliveries(
+        db, subscription.id, status=delivery_status, limit=limit, offset=offset
+    )
+
+
+@router.get(
+    "/{subscription_id}/deliveries/{delivery_id}", response_model=WebhookDeliveryWithPayload
+)
+def get_subscription_delivery(
+    delivery: WebhookDelivery = Depends(_get_delivery_or_404),
+) -> WebhookDeliveryWithPayload:
+    # The single-delivery view includes the payload so an operator debugging a
+    # failing endpoint can see exactly what was sent.
+    return delivery
+
+
+@router.post(
+    "/{subscription_id}/deliveries/{delivery_id}/retry", response_model=WebhookDeliveryRead
+)
+def retry_subscription_delivery(
+    db: Session = Depends(get_db),
+    delivery: WebhookDelivery = Depends(_get_delivery_or_404),
+) -> WebhookDeliveryRead:
+    return requeue_delivery(db, delivery)

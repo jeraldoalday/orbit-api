@@ -91,6 +91,20 @@ def validate_webhook_url(raw_url: str, *, require_https: bool = False, resolve: 
     return url
 
 
+def resolve_primary_address(url: str) -> Optional[str]:
+    """The first address a URL's host resolves to, or None if it can't be resolved.
+
+    Used at delivery time so a hostname that was public when the subscription
+    was created is re-checked against where it points now.
+    """
+    hostname = urlparse(url).hostname
+    if not hostname:
+        return None
+
+    addresses = _resolved_addresses(hostname.lower().rstrip("."))
+    return addresses[0] if addresses else None
+
+
 def address_is_deliverable(address: Optional[str]) -> bool:
     """Whether the worker may open a connection to ``address``."""
     if not address:
