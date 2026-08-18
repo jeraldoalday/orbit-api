@@ -392,3 +392,59 @@ def test_restricted_project_comments_hidden_from_non_member(client):
     )
 
     assert response.status_code == 404
+
+
+def _org_members_url(org_id, suffix=""):
+    return f"/api/v1/organizations/{org_id}/members{suffix}"
+
+
+def _membership_id_for(client, headers, org_id, email):
+    members = client.get(_org_members_url(org_id), headers=headers).json()
+    return next(m["id"] for m in members if m["user"]["email"] == email)
+
+
+def test_removing_an_org_member_clears_their_project_roles(client):
+    """Otherwise the stale row silently restores access on re-invite."""
+    owner_headers, member_headers, org = _setup_org_with_member(client)
+    project = _create_project(client, owner_headers, org["id"], visibility="restricted")
+    client.post(
+        _members_url(org["id"], project["id"]),
+        json={"email": "member@example.com", "role": "manager"},
+        headers=owner_headers,
+    )
+    membership_id = _membership_id_for(client, owner_headers, org["id"], "member@example.com")
+
+    remove_response = client.delete(
+        _org_members_url(org["id"], f"/{membership_id}"), headers=owner_headers
+    )
+    assert remove_response.status_code == 204
+
+    # Re-added as a plain org member, they must not regain the old manager role.
+    _add_org_member(client, owner_headers, org["id"], "member@example.com")
+    assert (
+        client.get(_project_url(org["id"], project["id"]), headers=member_headers).status_code
+        == 404
+    )
+    assert client.get(_members_url(org["id"], project["id"]), headers=owner_headers).json() == []
+
+
+def test_removing_an_org_member_leaves_other_orgs_project_roles_intact(client):
+    owner_headers, member_headers, org = _setup_org_with_member(client)
+    other_org = _create_org(client, owner_headers, name="Other Org")
+    _add_org_member(client, owner_headers, other_org["id"], "member@example.com")
+    other_project = _create_project(
+        client, owner_headers, other_org["id"], visibility="restricted"
+    )
+    client.post(
+        _members_url(other_org["id"], other_project["id"]),
+        json={"email": "member@example.com", "role": "editor"},
+        headers=owner_headers,
+    )
+    membership_id = _membership_id_for(client, owner_headers, org["id"], "member@example.com")
+
+    client.delete(_org_members_url(org["id"], f"/{membership_id}"), headers=owner_headers)
+
+    response = client.get(
+        _project_url(other_org["id"], other_project["id"]), headers=member_headers
+    )
+    assert response.status_code == 200

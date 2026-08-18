@@ -1,11 +1,13 @@
 import uuid
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.membership import Membership, MembershipRole, role_at_least
 from app.models.organization import Organization
+from app.models.project import Project
+from app.models.project_member import ProjectMember
 from app.services.auth_service import get_user_by_email
 
 
@@ -115,6 +117,20 @@ def remove_member(db: Session, membership: Membership) -> None:
         and count_owners(db, membership.organization_id) <= 1
     ):
         raise LastOwnerError("Cannot remove the last remaining owner")
+
+    # Project roles are scoped to a project, not to the org membership, so
+    # nothing in the schema removes them when someone leaves. Left behind, they
+    # silently reinstate the old project access the moment the user is re-added
+    # to the organization. Clear them in the same transaction as the removal.
+    org_project_ids = select(Project.id).where(
+        Project.organization_id == membership.organization_id
+    )
+    db.execute(
+        delete(ProjectMember).where(
+            ProjectMember.user_id == membership.user_id,
+            ProjectMember.project_id.in_(org_project_ids),
+        )
+    )
 
     db.delete(membership)
     db.commit()
