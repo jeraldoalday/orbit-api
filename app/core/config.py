@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     list_default_limit: int = 50
     list_max_limit: int = 100
 
+    attachment_storage_dir: str = "var/attachments"
+    attachment_max_bytes: int = 10 * 1024 * 1024
+    attachment_max_per_task: int = 20
+
     rate_limit_enabled: bool = True
     rate_limit_requests: int = 300
     rate_limit_window_seconds: int = 60

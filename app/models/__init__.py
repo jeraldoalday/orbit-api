@@ -1,3 +1,4 @@
+from app.models.attachment import Attachment
 from app.models.invitation import Invitation, InvitationStatus
 from app.models.label import Label
 from app.models.membership import Membership, MembershipRole
@@ -32,4 +33,5 @@ __all__ = [
     "Notification",
     "NotificationType",
     "TaskLabel",
+    "Attachment",
 ]

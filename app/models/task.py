@@ -11,6 +11,7 @@ from app.db.base import Base
 from app.models.mixins import TimestampMixin, UUIDPKMixin
 
 if TYPE_CHECKING:
+    from app.models.attachment import Attachment
     from app.models.label import Label
     from app.models.project import Project
     from app.models.user import User
@@ -63,6 +64,9 @@ class Task(UUIDPKMixin, TimestampMixin, Base):
     assignee: Mapped[Optional["User"]] = relationship()
     labels: Mapped[list["Label"]] = relationship(
         secondary="task_labels", back_populates="tasks", viewonly=True
+    )
+    attachments: Mapped[list["Attachment"]] = relationship(
+        back_populates="task", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

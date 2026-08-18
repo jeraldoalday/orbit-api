@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
 from app.core.rate_limit import reset_rate_limits  # noqa: E402
+from app.core.storage import LocalObjectStorage, get_storage  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.session import get_db  # noqa: E402
 from app.main import app  # noqa: E402
@@ -49,7 +50,13 @@ def db() -> Session:
 
 
 @pytest.fixture()
-def client(db: Session) -> TestClient:
+def storage(tmp_path) -> LocalObjectStorage:
+    """Attachment bytes land in a per-test directory, never the real root."""
+    return LocalObjectStorage(str(tmp_path / "attachments"))
+
+
+@pytest.fixture()
+def client(db: Session, storage: LocalObjectStorage) -> TestClient:
     def _get_db_override():
         try:
             yield db
@@ -57,7 +64,10 @@ def client(db: Session) -> TestClient:
             pass
 
     app.dependency_overrides[get_db] = _get_db_override
+    app.dependency_overrides[get_storage] = lambda: storage
     try:
         yield TestClient(app)
     finally:
         app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_storage, None)
+        storage.clear()

@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.routers import (
+    attachments,
     auth,
     health,
     invitations,
@@ -28,6 +29,7 @@ api_router.include_router(project_members.router)
 api_router.include_router(tasks.router)
 api_router.include_router(task_comments.router)
 api_router.include_router(task_labels.router)
+api_router.include_router(attachments.router)
 api_router.include_router(labels.router)
 api_router.include_router(invitations.router)
 api_router.include_router(invitations.accept_router)
