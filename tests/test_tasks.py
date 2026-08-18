@@ -27,6 +27,13 @@ def _tasks_url(org_id, project_id, suffix=""):
     return f"/api/v1/organizations/{org_id}/projects/{project_id}/tasks{suffix}"
 
 
+def _setup(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+    return headers, org, project
+
+
 def _parse_dt(value):
     # The SQLite test backend doesn't round-trip UTC offsets, so compare naive
     # timestamps rather than raw strings (Postgres preserves the offset in prod).
@@ -554,3 +561,45 @@ def test_task_not_found_for_wrong_project(client):
     response = client.get(_tasks_url(org["id"], project_b["id"], f"/{task['id']}"), headers=headers)
 
     assert response.status_code == 404
+
+
+def test_clear_task_description(client):
+    headers, org, project = _setup(client)
+    task = client.post(
+        _tasks_url(org["id"], project["id"]),
+        json={"title": "Ship it", "description": "Some detail"},
+        headers=headers,
+    ).json()
+
+    response = client.patch(
+        _tasks_url(org["id"], project["id"], f"/{task['id']}"),
+        json={"description": None},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["description"] is None
+
+
+def test_clearing_task_description_is_recorded_on_the_timeline(client):
+    headers, org, project = _setup(client)
+    task = client.post(
+        _tasks_url(org["id"], project["id"]),
+        json={"title": "Ship it", "description": "Some detail"},
+        headers=headers,
+    ).json()
+
+    client.patch(
+        _tasks_url(org["id"], project["id"], f"/{task['id']}"),
+        json={"description": None},
+        headers=headers,
+    )
+
+    timeline = client.get(
+        _tasks_url(org["id"], project["id"], f"/{task['id']}/timeline"), headers=headers
+    ).json()
+    updates = [entry for entry in timeline if entry["kind"] == "activity"]
+    assert updates[-1]["activity"]["data"]["description"] == {
+        "from": "Some detail",
+        "to": None,
+    }

@@ -126,3 +126,44 @@ def test_admin_can_delete_project(client):
     )
 
     assert response.status_code == 204
+
+
+def test_clear_project_description(client):
+    """An explicit null must clear the field, not be ignored as an unset value."""
+    headers = _register_and_login(client, email="owner@example.com")
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"]).json()
+    client.patch(
+        f"/api/v1/organizations/{org['id']}/projects/{project['id']}",
+        json={"description": "Initial scope"},
+        headers=headers,
+    )
+
+    response = client.patch(
+        f"/api/v1/organizations/{org['id']}/projects/{project['id']}",
+        json={"description": None},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["description"] is None
+
+
+def test_update_project_name_leaves_description_untouched(client):
+    headers = _register_and_login(client, email="owner@example.com")
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"]).json()
+    client.patch(
+        f"/api/v1/organizations/{org['id']}/projects/{project['id']}",
+        json={"description": "Initial scope"},
+        headers=headers,
+    )
+
+    response = client.patch(
+        f"/api/v1/organizations/{org['id']}/projects/{project['id']}",
+        json={"name": "Renamed"},
+        headers=headers,
+    )
+
+    assert response.json()["name"] == "Renamed"
+    assert response.json()["description"] == "Initial scope"

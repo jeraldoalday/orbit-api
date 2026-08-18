@@ -37,9 +37,13 @@ def list_projects(db: Session, org_id: uuid.UUID) -> list[Project]:
 
 
 def update_project(db: Session, project: Project, project_in: ProjectUpdate) -> Project:
+    # `description` is nullable, so an explicit null has to be told apart from an
+    # omitted key: checking `is not None` alone made the field impossible to clear.
+    fields_set = project_in.model_fields_set
+
     if project_in.name is not None:
         project.name = project_in.name
-    if project_in.description is not None:
+    if "description" in fields_set:
         project.description = project_in.description
     if project_in.visibility is not None:
         project.visibility = project_in.visibility

@@ -121,7 +121,7 @@ def update_task(
     if task_in.title is not None and task_in.title != task.title:
         changes["title"] = {"from": task.title, "to": task_in.title}
         task.title = task_in.title
-    if task_in.description is not None and task_in.description != task.description:
+    if "description" in fields_set and task_in.description != task.description:
         changes["description"] = {"from": task.description, "to": task_in.description}
         task.description = task_in.description
     if task_in.status is not None and task_in.status != task.status:
