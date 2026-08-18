@@ -5,6 +5,7 @@ from typing import Literal, Optional
 from sqlalchemy import asc, case, desc, select
 from sqlalchemy.orm import Session
 
+from app.core.storage import ObjectStorage
 from app.models.audit_log import AuditAction, AuditResource
 from app.models.notification import NotificationType
 from app.models.project import Project
@@ -14,6 +15,7 @@ from app.models.task_label import TaskLabel
 from app.models.user import User
 from app.models.webhook import WebhookEvent
 from app.schemas.task import TaskCreate, TaskUpdate
+from app.services.attachment_service import delete_objects, storage_keys_for_task
 from app.services.audit_service import record_audit
 from app.services.membership_service import get_membership
 from app.services.notification_service import create_notification
@@ -249,9 +251,15 @@ def restore_task(db: Session, project: Project, task: Task, actor: Optional[User
 
 
 def purge_task(
-    db: Session, project: Project, task: Task, actor: Optional[User] = None
+    db: Session,
+    storage: ObjectStorage,
+    project: Project,
+    task: Task,
+    actor: Optional[User] = None,
 ) -> None:
     """Delete for real, taking the task's comments, activity and files with it."""
     _audit_task(db, project, task, AuditAction.TASK_PURGED, actor)
+    keys = storage_keys_for_task(db, task.id)
     db.delete(task)
     db.commit()
+    delete_objects(storage, keys)

@@ -333,3 +333,109 @@ def test_a_non_member_cannot_see_attachments(client, setup):
     response = client.get(_url(org["id"], project["id"], task["id"]), headers=outsider_headers)
 
     assert response.status_code == 404
+
+
+# --- purge must not leak stored objects -------------------------------------
+
+
+def test_purging_a_task_deletes_its_stored_objects(client, setup, storage):
+    """The attachment rows go with the cascade; the bytes must go too.
+
+    Without this the only record of which objects belonged to the task is
+    destroyed alongside it, and the blobs are stranded in the bucket forever.
+    """
+    headers, org, project, task = setup
+    _upload(client, headers, org, project, task)
+    assert _all_keys(storage)
+
+    client.delete(
+        f"/api/v1/organizations/{org['id']}/projects/{project['id']}/tasks/{task['id']}",
+        headers=headers,
+    )
+    purged = client.delete(
+        f"/api/v1/organizations/{org['id']}/projects/{project['id']}"
+        f"/tasks/{task['id']}/purge",
+        headers=headers,
+    )
+
+    assert purged.status_code == 204
+    assert _all_keys(storage) == []
+
+
+def test_purging_a_project_deletes_every_tasks_stored_objects(client, setup, storage):
+    headers, org, project, task = setup
+    second_task = client.post(
+        f"/api/v1/organizations/{org['id']}/projects/{project['id']}/tasks",
+        json={"title": "Another"},
+        headers=headers,
+    ).json()
+    _upload(client, headers, org, project, task, name="first.txt")
+    _upload(client, headers, org, project, second_task, name="second.txt")
+    assert len(_all_keys(storage)) == 2
+
+    client.delete(
+        f"/api/v1/organizations/{org['id']}/projects/{project['id']}", headers=headers
+    )
+    purged = client.delete(
+        f"/api/v1/organizations/{org['id']}/projects/{project['id']}/purge", headers=headers
+    )
+
+    assert purged.status_code == 204
+    assert _all_keys(storage) == []
+
+
+def test_a_soft_delete_keeps_the_stored_objects(client, setup, storage):
+    """Restoring has to bring the files back with it, so nothing is removed."""
+    headers, org, project, task = setup
+    _upload(client, headers, org, project, task)
+
+    client.delete(
+        f"/api/v1/organizations/{org['id']}/projects/{project['id']}/tasks/{task['id']}",
+        headers=headers,
+    )
+
+    assert len(_all_keys(storage)) == 1
+
+
+def test_restoring_a_task_brings_its_attachments_back(client, setup, storage):
+    headers, org, project, task = setup
+    attachment = _upload(client, headers, org, project, task).json()
+    client.delete(
+        f"/api/v1/organizations/{org['id']}/projects/{project['id']}/tasks/{task['id']}",
+        headers=headers,
+    )
+
+    client.post(
+        f"/api/v1/organizations/{org['id']}/projects/{project['id']}"
+        f"/tasks/{task['id']}/restore",
+        headers=headers,
+    )
+
+    listed = client.get(_url(org["id"], project["id"], task["id"]), headers=headers).json()
+    assert [item["id"] for item in listed] == [attachment["id"]]
+    download = client.get(
+        _url(org["id"], project["id"], task["id"], f"/{attachment['id']}/download"),
+        headers=headers,
+    )
+    assert download.content == b"hello"
+
+
+def test_delete_objects_survives_a_failing_backend(storage, caplog):
+    """One key failing must not abort the rest — the rows are already gone."""
+    from app.services.attachment_service import delete_objects
+
+    class _Flaky:
+        def __init__(self):
+            self.deleted = []
+
+        def delete(self, key):
+            if key == "bad":
+                raise OSError("bucket unavailable")
+            self.deleted.append(key)
+
+    flaky = _Flaky()
+
+    removed = delete_objects(flaky, ["good-1", "bad", "good-2"])
+
+    assert removed == 2
+    assert flaky.deleted == ["good-1", "good-2"]

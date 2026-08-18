@@ -11,6 +11,7 @@ from app.api.deps import (
     require_project_role,
 )
 from app.core.config import get_settings
+from app.core.storage import ObjectStorage, get_storage
 from app.db.session import get_db
 from app.models.membership import Membership, MembershipRole
 from app.models.organization import Organization
@@ -125,6 +126,7 @@ def purge(
     project: Project = Depends(get_deleted_project_or_404),
     _membership: Membership = Depends(require_org_role(MembershipRole.OWNER)),
     current_user: User = Depends(get_current_active_user),
+    storage: ObjectStorage = Depends(get_storage),
 ) -> None:
     """Delete a project and everything under it, irreversibly.
 
@@ -137,4 +139,4 @@ def purge(
             status_code=status.HTTP_409_CONFLICT,
             detail="Delete the project before purging it",
         )
-    purge_project(db, project, current_user)
+    purge_project(db, storage, project, current_user)

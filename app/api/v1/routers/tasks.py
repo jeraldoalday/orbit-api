@@ -14,6 +14,7 @@ from app.api.deps import (
     require_project_role,
 )
 from app.core.config import get_settings
+from app.core.storage import ObjectStorage, get_storage
 from app.db.session import get_db
 from app.models.membership import Membership, MembershipRole
 from app.models.project import Project
@@ -158,10 +159,11 @@ def purge(
     task: Task = Depends(get_deleted_task_or_404),
     _membership: Membership = Depends(require_org_role(MembershipRole.OWNER)),
     current_user: User = Depends(get_current_active_user),
+    storage: ObjectStorage = Depends(get_storage),
 ) -> None:
     """Irreversibly delete a task with its comments, activity and attachments."""
     if not task.is_deleted:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Delete the task before purging it"
         )
-    purge_task(db, project, task, current_user)
+    purge_task(db, storage, project, task, current_user)

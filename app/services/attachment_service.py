@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import BinaryIO, Optional
 
@@ -13,6 +14,8 @@ from app.core.storage import (
 from app.models.attachment import Attachment
 from app.models.task import Task
 from app.models.user import User
+
+logger = logging.getLogger("app.attachments")
 
 DEFAULT_CONTENT_TYPE = "application/octet-stream"
 
@@ -131,6 +134,37 @@ def get_attachment(
     return db.execute(stmt).scalar_one_or_none()
 
 
+def storage_keys_for_task(db: Session, task_id: uuid.UUID) -> list[str]:
+    stmt = select(Attachment.storage_key).where(Attachment.task_id == task_id)
+    return list(db.execute(stmt).scalars().all())
+
+
+def storage_keys_for_project(db: Session, project_id: uuid.UUID) -> list[str]:
+    stmt = (
+        select(Attachment.storage_key)
+        .join(Task, Task.id == Attachment.task_id)
+        .where(Task.project_id == project_id)
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
+def delete_objects(storage: ObjectStorage, keys: list[str]) -> int:
+    """Best-effort removal of stored objects whose rows are already gone.
+
+    One key failing must not abort the rest: the metadata is committed by this
+    point, so raising here would leave *more* objects orphaned than carrying on
+    does. Failures are logged so the leak is at least visible.
+    """
+    removed = 0
+    for key in keys:
+        try:
+            storage.delete(key)
+            removed += 1
+        except Exception:
+            logger.exception("failed to delete stored object", extra={"storage_key": key})
+    return removed
+
+
 def delete_attachment(db: Session, storage: ObjectStorage, attachment: Attachment) -> None:
     """Remove the row first, then the object.
 
@@ -151,7 +185,10 @@ __all__ = [
     "count_attachments",
     "create_attachment",
     "delete_attachment",
+    "delete_objects",
     "get_attachment",
     "list_attachments",
+    "storage_keys_for_project",
+    "storage_keys_for_task",
     "total_bytes",
 ]

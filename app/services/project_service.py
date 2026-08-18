@@ -4,11 +4,13 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.storage import ObjectStorage
 from app.models.audit_log import AuditAction, AuditResource
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate
+from app.services.attachment_service import delete_objects, storage_keys_for_project
 from app.services.audit_service import record_audit
 
 
@@ -126,7 +128,12 @@ def restore_project(db: Session, project: Project, actor: Optional[User] = None)
     return project
 
 
-def purge_project(db: Session, project: Project, actor: Optional[User] = None) -> None:
+def purge_project(
+    db: Session,
+    storage: ObjectStorage,
+    project: Project,
+    actor: Optional[User] = None,
+) -> None:
     """Delete for real, taking every task, comment and attachment with it.
 
     Unlike the soft delete this is unrecoverable, which is why the route that
@@ -137,5 +144,10 @@ def purge_project(db: Session, project: Project, actor: Optional[User] = None) -
     # log holds a plain UUID rather than a foreign key precisely so a purge
     # can't take its own record with it.
     _audit(db, project, AuditAction.PROJECT_PURGED, actor)
+    # The attachment rows go with the cascade, and with them the only record of
+    # which stored objects belonged here — so the keys are collected first and
+    # the objects removed once the delete has actually committed.
+    keys = storage_keys_for_project(db, project.id)
     db.delete(project)
     db.commit()
+    delete_objects(storage, keys)
