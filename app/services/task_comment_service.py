@@ -12,6 +12,7 @@ from app.models.user import User
 from app.services.auth_service import get_user_by_email
 from app.services.notification_service import create_notification, extract_mentions
 from app.services.project_member_service import can_see_project
+from app.services.task_watcher_service import notify_watchers
 from app.services.webhook_events import emit_comment_event
 
 
@@ -64,6 +65,20 @@ def _notify_comment(
             data=payload,
             commit=False,
         )
+        notified.add(task.assignee_id)
+
+    # Watchers last, minus everyone already covered above: one comment must
+    # never leave two rows in the same inbox.
+    notify_watchers(
+        db,
+        project,
+        task,
+        author,
+        NotificationType.TASK_COMMENTED,
+        payload,
+        skip=notified,
+        commit=False,
+    )
 
 
 def create_comment(

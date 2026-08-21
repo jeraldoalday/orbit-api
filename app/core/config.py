@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     attachment_storage_dir: str = "var/attachments"
     attachment_max_bytes: int = 10 * 1024 * 1024
     attachment_max_per_task: int = 20
+    # The count cap alone bounds a task at count x per-file size, which is an
+    # order of magnitude more than anyone means to allow. This is the number
+    # that actually bounds what one task can cost in storage.
+    attachment_max_total_bytes_per_task: int = 50 * 1024 * 1024
 
     webhook_max_per_org: int = 10
     webhook_max_attempts: int = 5

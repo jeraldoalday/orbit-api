@@ -20,9 +20,17 @@ class AttachmentRead(BaseModel):
 
 
 class AttachmentQuota(BaseModel):
-    """What a client needs to validate an upload before attempting it."""
+    """What a client needs to validate an upload before attempting it.
+
+    Both budgets are reported, because either can be the one that stops the
+    next upload: a task can be well under its file count and still out of
+    bytes.
+    """
 
     max_bytes: int
     max_per_task: int
     used: int
     remaining: int
+    max_total_bytes: int
+    used_bytes: int
+    remaining_bytes: int

@@ -22,12 +22,14 @@ from app.models.user import User
 from app.schemas.attachment import AttachmentQuota, AttachmentRead
 from app.services.attachment_service import (
     AttachmentLimitError,
+    AttachmentQuotaError,
     EmptyUploadError,
     count_attachments,
     create_attachment,
     delete_attachment,
     get_attachment,
     list_attachments,
+    total_bytes,
 )
 
 settings = get_settings()
@@ -78,12 +80,13 @@ def upload(
             uploader=current_user,
             max_bytes=settings.attachment_max_bytes,
             max_per_task=settings.attachment_max_per_task,
+            max_total_bytes=settings.attachment_max_total_bytes_per_task,
         )
     except ObjectTooLargeError as exc:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=str(exc)
         ) from exc
-    except (AttachmentLimitError, EmptyUploadError) as exc:
+    except (AttachmentLimitError, AttachmentQuotaError, EmptyUploadError) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
@@ -107,11 +110,16 @@ def quota(
     _role: ProjectRole = Depends(require_project_role(ProjectRole.VIEWER)),
 ) -> AttachmentQuota:
     used = count_attachments(db, task.id)
+    used_bytes = total_bytes(db, task.id)
+    max_total = settings.attachment_max_total_bytes_per_task
     return AttachmentQuota(
         max_bytes=settings.attachment_max_bytes,
         max_per_task=settings.attachment_max_per_task,
         used=used,
         remaining=max(settings.attachment_max_per_task - used, 0),
+        max_total_bytes=max_total,
+        used_bytes=used_bytes,
+        remaining_bytes=max(max_total - used_bytes, 0),
     )
 
 

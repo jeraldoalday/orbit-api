@@ -195,9 +195,7 @@ def test_upload_sanitizes_a_traversing_filename(client, setup):
 def test_upload_normalizes_a_parameterized_content_type(client, setup):
     headers, org, project, task = setup
 
-    body = _upload(
-        client, headers, org, project, task, ctype="text/html; charset=utf-8"
-    ).json()
+    body = _upload(client, headers, org, project, task, ctype="text/html; charset=utf-8").json()
 
     assert body["content_type"] == "text/html"
 
@@ -235,9 +233,7 @@ def test_quota_reports_remaining_slots(client, setup):
     headers, org, project, task = setup
     _upload(client, headers, org, project, task)
 
-    quota = client.get(
-        _url(org["id"], project["id"], task["id"], "/quota"), headers=headers
-    ).json()
+    quota = client.get(_url(org["id"], project["id"], task["id"], "/quota"), headers=headers).json()
 
     assert quota["used"] == 1
     assert quota["remaining"] == quota["max_per_task"] - 1
@@ -353,8 +349,7 @@ def test_purging_a_task_deletes_its_stored_objects(client, setup, storage):
         headers=headers,
     )
     purged = client.delete(
-        f"/api/v1/organizations/{org['id']}/projects/{project['id']}"
-        f"/tasks/{task['id']}/purge",
+        f"/api/v1/organizations/{org['id']}/projects/{project['id']}" f"/tasks/{task['id']}/purge",
         headers=headers,
     )
 
@@ -373,9 +368,7 @@ def test_purging_a_project_deletes_every_tasks_stored_objects(client, setup, sto
     _upload(client, headers, org, project, second_task, name="second.txt")
     assert len(_all_keys(storage)) == 2
 
-    client.delete(
-        f"/api/v1/organizations/{org['id']}/projects/{project['id']}", headers=headers
-    )
+    client.delete(f"/api/v1/organizations/{org['id']}/projects/{project['id']}", headers=headers)
     purged = client.delete(
         f"/api/v1/organizations/{org['id']}/projects/{project['id']}/purge", headers=headers
     )
@@ -439,3 +432,75 @@ def test_delete_objects_survives_a_failing_backend(storage, caplog):
 
     assert removed == 2
     assert flaky.deleted == ["good-1", "good-2"]
+
+
+# --- the per-task byte budget ----------------------------------------------
+
+
+def _set_total_budget(monkeypatch, value):
+    monkeypatch.setattr(
+        "app.api.v1.routers.attachments.settings.attachment_max_total_bytes_per_task", value
+    )
+
+
+def test_upload_is_capped_by_total_bytes_not_just_by_count(client, setup, monkeypatch):
+    """The count cap alone let a task hold count x per-file-size bytes."""
+    headers, org, project, task = setup
+    _set_total_budget(monkeypatch, 10)
+
+    assert _upload(client, headers, org, project, task, body=b"12345678").status_code == 201
+    response = _upload(client, headers, org, project, task, name="more.txt", body=b"12345678")
+
+    assert response.status_code == 422
+    assert "bytes of attachments" in response.json()["detail"]
+
+
+def test_an_upload_that_busts_the_budget_leaves_nothing_behind(client, setup, monkeypatch, storage):
+    headers, org, project, task = setup
+    _set_total_budget(monkeypatch, 10)
+    _upload(client, headers, org, project, task, body=b"12345678")
+    keys_before = _all_keys(storage)
+
+    _upload(client, headers, org, project, task, name="more.txt", body=b"12345678")
+
+    assert _all_keys(storage) == keys_before
+    listing = client.get(_url(org["id"], project["id"], task["id"]), headers=headers).json()
+    assert len(listing) == 1
+
+
+def test_an_upload_that_exactly_fills_the_budget_is_accepted(client, setup, monkeypatch):
+    headers, org, project, task = setup
+    _set_total_budget(monkeypatch, 8)
+
+    assert _upload(client, headers, org, project, task, body=b"12345678").status_code == 201
+
+
+def test_a_full_task_is_refused_without_reading_the_body(client, setup, monkeypatch):
+    headers, org, project, task = setup
+    _set_total_budget(monkeypatch, 5)
+    _upload(client, headers, org, project, task, body=b"hello")
+
+    response = _upload(client, headers, org, project, task, name="more.txt", body=b"x")
+
+    assert response.status_code == 422
+
+
+def test_quota_reports_both_budgets(client, setup):
+    headers, org, project, task = setup
+    _upload(client, headers, org, project, task, body=b"hello")
+
+    quota = client.get(_url(org["id"], project["id"], task["id"], "/quota"), headers=headers).json()
+
+    assert quota["used_bytes"] == 5
+    assert quota["remaining_bytes"] == quota["max_total_bytes"] - 5
+
+
+def test_deleting_an_attachment_frees_budget(client, setup, monkeypatch):
+    headers, org, project, task = setup
+    _set_total_budget(monkeypatch, 10)
+    first = _upload(client, headers, org, project, task, body=b"12345678").json()
+    client.delete(_url(org["id"], project["id"], task["id"], f"/{first['id']}"), headers=headers)
+
+    response = _upload(client, headers, org, project, task, name="more.txt", body=b"12345678")
+
+    assert response.status_code == 201

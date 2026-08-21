@@ -21,6 +21,7 @@ from app.services.notification_service import create_notification
 from app.services.project_member_service import can_see_project
 from app.services.task_activity_service import record_activity
 from app.services.task_dependency_service import open_blockers
+from app.services.task_watcher_service import notify_watchers
 from app.services.webhook_events import emit_task_event
 
 TaskSortField = Literal["created_at", "title", "status", "priority", "due_date"]
@@ -195,6 +196,9 @@ def update_task(
 ) -> Task:
     fields_set = task_in.model_fields_set
     changes: dict[str, dict[str, object]] = {}
+    # People this update has already written a notification for, so the
+    # watcher fan-out doesn't give them a second one for the same PATCH.
+    already_notified: set[uuid.UUID] = set()
 
     # Checked before anything is assigned: raising halfway through would leave
     # the fields already written pending on the session, to be committed by
@@ -234,9 +238,29 @@ def update_task(
         task.assignee_id = task_in.assignee_id
         if task_in.assignee_id is not None:
             _notify_assignee(db, project, task, actor, task_in.assignee_id)
+            already_notified.add(task_in.assignee_id)
 
     if changes:
         record_activity(db, task.id, actor, TaskActivityType.UPDATED, changes, commit=False)
+        if "status" in changes:
+            # Status is the change people follow a task *for*; the rest of the
+            # fields move often enough that notifying on them would train
+            # everyone to ignore the inbox. Anyone just notified about a
+            # reassignment is skipped so one PATCH is never two rows.
+            notify_watchers(
+                db,
+                project,
+                task,
+                actor,
+                NotificationType.TASK_UPDATED,
+                {
+                    "task_title": task.title,
+                    "project_id": str(project.id),
+                    "status": task.status.value,
+                },
+                skip=already_notified,
+                commit=False,
+            )
         # Only a real change is worth a delivery: a PATCH that sets a field to
         # the value it already had shouldn't wake up every subscriber.
         emit_task_event(

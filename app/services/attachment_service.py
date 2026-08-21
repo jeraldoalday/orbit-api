@@ -26,6 +26,10 @@ class AttachmentLimitError(Exception):
     """Raised when a task already holds as many attachments as it may."""
 
 
+class AttachmentQuotaError(Exception):
+    """Raised when an upload would take a task past its total byte budget."""
+
+
 class EmptyUploadError(Exception):
     """Raised when the uploaded body contains no bytes at all."""
 
@@ -72,6 +76,7 @@ def create_attachment(
     uploader: User,
     max_bytes: int,
     max_per_task: int,
+    max_total_bytes: int,
 ) -> Attachment:
     """Stream an upload into storage and record its metadata.
 
@@ -80,17 +85,30 @@ def create_attachment(
     removes) rather than a row pointing at bytes that were never stored.
     """
     if count_attachments(db, task.id) >= max_per_task:
-        raise AttachmentLimitError(
-            f"A task may have at most {max_per_task} attachments"
+        raise AttachmentLimitError(f"A task may have at most {max_per_task} attachments")
+
+    used_bytes = total_bytes(db, task.id)
+    if used_bytes >= max_total_bytes:
+        raise AttachmentQuotaError(
+            f"A task may hold at most {max_total_bytes} bytes of attachments"
         )
 
     safe_filename = sanitize_filename(filename)
     storage_key = build_storage_key(task.id, safe_filename)
 
+    # The upload is streamed, so its size isn't known until it has been
+    # written; the budget can only be checked for real once it is. The
+    # pre-check above still matters — it refuses an already-full task without
+    # spooling a body to disk first.
     size_bytes = storage.save(storage_key, source, max_bytes=max_bytes)
     if size_bytes == 0:
         storage.delete(storage_key)
         raise EmptyUploadError("Uploaded file is empty")
+    if used_bytes + size_bytes > max_total_bytes:
+        storage.delete(storage_key)
+        raise AttachmentQuotaError(
+            f"A task may hold at most {max_total_bytes} bytes of attachments"
+        )
 
     attachment = Attachment(
         task_id=task.id,
@@ -128,9 +146,7 @@ def list_attachments(
 def get_attachment(
     db: Session, task_id: uuid.UUID, attachment_id: uuid.UUID
 ) -> Optional[Attachment]:
-    stmt = select(Attachment).where(
-        Attachment.id == attachment_id, Attachment.task_id == task_id
-    )
+    stmt = select(Attachment).where(Attachment.id == attachment_id, Attachment.task_id == task_id)
     return db.execute(stmt).scalar_one_or_none()
 
 
@@ -180,6 +196,7 @@ def delete_attachment(db: Session, storage: ObjectStorage, attachment: Attachmen
 
 __all__ = [
     "AttachmentLimitError",
+    "AttachmentQuotaError",
     "EmptyUploadError",
     "ObjectTooLargeError",
     "count_attachments",
