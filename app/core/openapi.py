@@ -49,6 +49,10 @@ TAGS_METADATA = [
     {"name": "project-members", "description": "Per-project roles layered under org roles."},
     {"name": "tasks", "description": "Tasks, with filtering, sorting and soft delete."},
     {"name": "task-comments", "description": "Discussion on a task, with @mentions."},
+    {
+        "name": "task-dependencies",
+        "description": "Which tasks must finish before which others can.",
+    },
     {"name": "task-labels", "description": "Attaching org labels to a task."},
     {"name": "labels", "description": "Org-wide label definitions."},
     {"name": "attachments", "description": "Files uploaded against a task."},

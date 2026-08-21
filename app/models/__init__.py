@@ -10,6 +10,7 @@ from app.models.project_member import ProjectMember, ProjectRole
 from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.task_activity import TaskActivity, TaskActivityType
 from app.models.task_comment import TaskComment
+from app.models.task_dependency import TaskDependency
 from app.models.task_label import TaskLabel
 from app.models.user import User
 from app.models.webhook import (
@@ -32,6 +33,7 @@ __all__ = [
     "TaskStatus",
     "TaskPriority",
     "TaskComment",
+    "TaskDependency",
     "TaskActivity",
     "TaskActivityType",
     "Invitation",

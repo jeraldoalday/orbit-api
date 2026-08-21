@@ -14,6 +14,7 @@ from app.api.v1.routers import (
     projects,
     search,
     task_comments,
+    task_dependencies,
     task_labels,
     tasks,
     users,
@@ -30,6 +31,7 @@ api_router.include_router(projects.router)
 api_router.include_router(project_members.router)
 api_router.include_router(tasks.router)
 api_router.include_router(task_comments.router)
+api_router.include_router(task_dependencies.router)
 api_router.include_router(task_labels.router)
 api_router.include_router(attachments.router)
 api_router.include_router(labels.router)
