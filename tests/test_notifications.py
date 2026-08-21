@@ -446,3 +446,77 @@ def test_notification_not_found(client):
     )
 
     assert response.status_code == 404
+
+
+# --- narrowing the inbox to one organization --------------------------------
+
+
+def _two_orgs_with_notifications(client):
+    """A member who is notified in two different organizations."""
+    owner_headers = _register_and_login(client, email="owner@example.com")
+    member_headers = _register_and_login(client, email="member@example.com")
+    member = _me(client, member_headers)
+
+    orgs = []
+    for name in ("Acme Inc", "Globex"):
+        org = _create_org(client, owner_headers, name=name)
+        _add_org_member(client, owner_headers, org["id"], "member@example.com")
+        project = _create_project(client, owner_headers, org["id"])
+        client.post(
+            _tasks_url(org["id"], project["id"]),
+            json={"title": f"Work in {name}", "assignee_id": member["id"]},
+            headers=owner_headers,
+        )
+        orgs.append(org)
+    return member_headers, orgs
+
+
+def test_unread_count_can_be_narrowed_to_one_organization(client):
+    member_headers, orgs = _two_orgs_with_notifications(client)
+
+    everywhere = client.get("/api/v1/notifications/unread_count", headers=member_headers).json()
+    here = client.get(
+        f"/api/v1/notifications/unread_count?organization_id={orgs[0]['id']}",
+        headers=member_headers,
+    ).json()
+
+    assert everywhere["unread"] == 2
+    assert here["unread"] == 1
+
+
+def test_the_count_agrees_with_the_list_it_sits_beside(client):
+    member_headers, orgs = _two_orgs_with_notifications(client)
+    query = f"organization_id={orgs[1]['id']}"
+
+    listed = client.get(f"/api/v1/notifications?{query}", headers=member_headers).json()
+    counted = client.get(
+        f"/api/v1/notifications/unread_count?{query}", headers=member_headers
+    ).json()
+
+    assert counted["unread"] == len(listed)
+
+
+def test_read_all_leaves_other_organizations_alone(client):
+    """The one inbox action with no undo must not reach further than asked."""
+    member_headers, orgs = _two_orgs_with_notifications(client)
+
+    marked = client.post(
+        f"/api/v1/notifications/read_all?organization_id={orgs[0]['id']}",
+        headers=member_headers,
+    ).json()
+
+    assert marked["marked"] == 1
+    remaining = client.get("/api/v1/notifications/unread_count", headers=member_headers).json()
+    assert remaining["unread"] == 1
+
+
+def test_read_all_without_a_scope_still_clears_everything(client):
+    member_headers, orgs = _two_orgs_with_notifications(client)
+
+    marked = client.post("/api/v1/notifications/read_all", headers=member_headers).json()
+
+    assert marked["marked"] == 2
+    assert (
+        client.get("/api/v1/notifications/unread_count", headers=member_headers).json()["unread"]
+        == 0
+    )

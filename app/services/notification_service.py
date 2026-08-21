@@ -90,10 +90,20 @@ def get_notification(
     return db.execute(stmt).scalar_one_or_none()
 
 
-def count_unread(db: Session, user_id: uuid.UUID) -> int:
+def count_unread(
+    db: Session, user_id: uuid.UUID, *, organization_id: Optional[uuid.UUID] = None
+) -> int:
+    """Unread notifications, optionally narrowed to one organization.
+
+    The narrowing exists so the badge can agree with the list beside it: an
+    inbox filtered to one org next to a count spanning all of them reads as a
+    bug every time somebody belongs to two.
+    """
     stmt = select(func.count()).where(
         Notification.user_id == user_id, Notification.read_at.is_(None)
     )
+    if organization_id is not None:
+        stmt = stmt.where(Notification.organization_id == organization_id)
     return db.execute(stmt).scalar_one()
 
 
@@ -115,13 +125,21 @@ def mark_unread(db: Session, notification: Notification) -> Notification:
     return notification
 
 
-def mark_all_read(db: Session, user_id: uuid.UUID) -> int:
-    stmt = (
-        update(Notification)
-        .where(Notification.user_id == user_id, Notification.read_at.is_(None))
-        .values(read_at=datetime.now(timezone.utc))
+def mark_all_read(
+    db: Session, user_id: uuid.UUID, *, organization_id: Optional[uuid.UUID] = None
+) -> int:
+    """Clear the unread flag, over the same scope the caller is looking at.
+
+    Without the narrowing, "mark all read" on one organization's inbox also
+    silently cleared every other organization's — the one action in the inbox
+    that can't be undone.
+    """
+    stmt = update(Notification).where(
+        Notification.user_id == user_id, Notification.read_at.is_(None)
     )
-    result = db.execute(stmt)
+    if organization_id is not None:
+        stmt = stmt.where(Notification.organization_id == organization_id)
+    result = db.execute(stmt.values(read_at=datetime.now(timezone.utc)))
     db.commit()
     return result.rowcount or 0
 

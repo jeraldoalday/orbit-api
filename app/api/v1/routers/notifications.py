@@ -59,16 +59,22 @@ def list_mine(
 def unread_count(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
+    organization_id: Optional[uuid.UUID] = None,
 ) -> UnreadCount:
-    return UnreadCount(unread=count_unread(db, current_user.id))
+    """The unread badge, over the same scope the list takes."""
+    return UnreadCount(unread=count_unread(db, current_user.id, organization_id=organization_id))
 
 
 @router.post("/read_all", response_model=MarkAllReadResult)
 def read_all(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
+    organization_id: Optional[uuid.UUID] = None,
 ) -> MarkAllReadResult:
-    return MarkAllReadResult(marked=mark_all_read(db, current_user.id))
+    """Mark everything read, optionally only within one organization."""
+    return MarkAllReadResult(
+        marked=mark_all_read(db, current_user.id, organization_id=organization_id)
+    )
 
 
 @router.post("/{notification_id}/read", response_model=NotificationRead)
