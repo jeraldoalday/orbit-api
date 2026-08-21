@@ -10,8 +10,8 @@ from app.models.task import Task
 from app.models.task_comment import TaskComment
 from app.models.user import User
 from app.services.auth_service import get_user_by_email
-from app.services.membership_service import get_membership
 from app.services.notification_service import create_notification, extract_mentions
+from app.services.project_member_service import can_see_project
 from app.services.webhook_events import emit_comment_event
 
 
@@ -35,8 +35,11 @@ def _notify_comment(
         mentioned = get_user_by_email(db, email)
         if mentioned is None or mentioned.id in notified:
             continue
-        # Only org members can see the task, so mentioning an outsider is a no-op.
-        if get_membership(db, project.organization_id, mentioned.id) is None:
+        # Mentioning someone who can't reach the project is a no-op: the
+        # notification carries the task title and project id, so sending it to
+        # a non-member — or to an org member excluded from a restricted
+        # project — hands them exactly what the restriction withholds.
+        if not can_see_project(db, project, mentioned.id):
             continue
         create_notification(
             db,

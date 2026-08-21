@@ -17,8 +17,8 @@ from app.models.webhook import WebhookEvent
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.services.attachment_service import delete_objects, storage_keys_for_task
 from app.services.audit_service import record_audit
-from app.services.membership_service import get_membership
 from app.services.notification_service import create_notification
+from app.services.project_member_service import can_see_project
 from app.services.task_activity_service import record_activity
 from app.services.task_dependency_service import open_blockers
 from app.services.webhook_events import emit_task_event
@@ -60,8 +60,15 @@ class TaskBlockedError(Exception):
 
 
 def _check_assignee_is_member(db: Session, project: Project, assignee_id: uuid.UUID) -> None:
-    if get_membership(db, project.organization_id, assignee_id) is None:
-        raise AssigneeNotMemberError("Assignee is not a member of this organization")
+    """Refuse an assignee who can't reach the project the task lives in.
+
+    Org membership alone isn't enough. Assigning a task in a restricted
+    project to an org member who isn't on it produced a notification carrying
+    the task's title and project id — a project they are meant not to know
+    exists, announced to them by name.
+    """
+    if not can_see_project(db, project, assignee_id):
+        raise AssigneeNotMemberError("Assignee does not have access to this project")
 
 
 def _notify_assignee(

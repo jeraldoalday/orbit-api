@@ -78,6 +78,24 @@ def resolve_project_role(
     return None
 
 
+def user_project_role(db: Session, project: Project, user_id: uuid.UUID) -> Optional[ProjectRole]:
+    """Effective project role of a user id, or None if they can't see it.
+
+    `resolve_project_role` takes the caller's own membership, which the
+    request already has in hand. This variant looks the membership up, for the
+    places that reason about somebody *else* — an assignee, a mentioned user —
+    and so have only their id.
+    """
+    membership = get_membership(db, project.organization_id, user_id)
+    if membership is None:
+        return None
+    return resolve_project_role(db, project, membership)
+
+
+def can_see_project(db: Session, project: Project, user_id: uuid.UUID) -> bool:
+    return user_project_role(db, project, user_id) is not None
+
+
 def add_project_member(
     db: Session, project: Project, email: str, role: ProjectRole
 ) -> ProjectMember:
@@ -118,9 +136,7 @@ def list_visible_projects(
     db: Session, org_id: uuid.UUID, membership: Membership, *, limit: int = 50, offset: int = 0
 ) -> list[Project]:
     """Projects in an org the caller may see, newest-name-first and paginated."""
-    stmt = select(Project).where(
-        Project.organization_id == org_id, Project.deleted_at.is_(None)
-    )
+    stmt = select(Project).where(Project.organization_id == org_id, Project.deleted_at.is_(None))
 
     if not role_at_least(membership.role, MembershipRole.ADMIN):
         # Plain members see open projects plus the restricted ones they're on.
@@ -128,8 +144,7 @@ def list_visible_projects(
             ProjectMember.user_id == membership.user_id
         )
         stmt = stmt.where(
-            (Project.visibility == ProjectVisibility.OPEN)
-            | (Project.id.in_(member_project_ids))
+            (Project.visibility == ProjectVisibility.OPEN) | (Project.id.in_(member_project_ids))
         )
 
     stmt = stmt.order_by(Project.name, Project.id).limit(limit).offset(offset)
