@@ -375,3 +375,117 @@ def test_attachments_webhooks_and_the_audit_trail_across_one_incident(client, st
     ).json()
     assert results["results"] == []
     assert client.get(tasks_url, headers=engineer_headers).status_code == 404
+
+
+def test_a_release_plan_from_dependencies_through_bulk_to_statistics(client):
+    """One team plans a release: a dependency chain, watchers on the critical
+    task, a bulk sweep to close the finished work, and a dashboard at the end.
+    """
+    lead_headers = _register_and_login(client, "lead@example.com", full_name="Lead")
+    dev_headers = _register_and_login(client, "dev@example.com", full_name="Dev")
+    reviewer_headers = _register_and_login(client, "reviewer@example.com", full_name="Reviewer")
+    dev_id = client.get("/api/v1/users/me", headers=dev_headers).json()["id"]
+
+    org = client.post(
+        "/api/v1/organizations", json={"name": "Release Co"}, headers=lead_headers
+    ).json()
+    for email in ("dev@example.com", "reviewer@example.com"):
+        client.post(
+            f"/api/v1/organizations/{org['id']}/members",
+            json={"email": email, "role": "member"},
+            headers=lead_headers,
+        )
+
+    project = client.post(
+        f"/api/v1/organizations/{org['id']}/projects",
+        json={"name": "1.0"},
+        headers=lead_headers,
+    ).json()
+    tasks_url = f"/api/v1/organizations/{org['id']}/projects/{project['id']}/tasks"
+
+    def create(title, **fields):
+        return client.post(tasks_url, json={"title": title, **fields}, headers=lead_headers).json()
+
+    migrate = create("Run the migration", priority="urgent")
+    changelog = create("Write the changelog")
+    ship = create("Ship 1.0", assignee_id=dev_id)
+
+    # Shipping waits on both, and the changelog waits on the migration.
+    for blocked, blocker in ((ship, migrate), (ship, changelog), (changelog, migrate)):
+        added = client.post(
+            f"{tasks_url}/{blocked['id']}/dependencies",
+            json={"depends_on_id": blocker["id"]},
+            headers=lead_headers,
+        )
+        assert added.status_code == 201
+
+    # ...and the chain can't be closed back on itself.
+    cycle = client.post(
+        f"{tasks_url}/{migrate['id']}/dependencies",
+        json={"depends_on_id": ship["id"]},
+        headers=lead_headers,
+    )
+    assert cycle.status_code == 409
+
+    # The reviewer follows the release task without being handed it.
+    assert (
+        client.post(f"{tasks_url}/{ship['id']}/watchers", headers=reviewer_headers).status_code
+        == 201
+    )
+
+    # Shipping is refused while its blockers are open.
+    blocked_attempt = client.patch(
+        f"{tasks_url}/{ship['id']}", json={"status": "done"}, headers=dev_headers
+    )
+    assert blocked_attempt.status_code == 409
+    assert "Run the migration" in blocked_attempt.json()["detail"]
+
+    stats_url = f"/api/v1/organizations/{org['id']}/projects/{project['id']}/stats"
+    before = client.get(stats_url, headers=lead_headers).json()
+    assert before["tasks"]["total"] == 3
+    assert before["tasks"]["blocked"] == 2
+    assert before["tasks"]["done"] == 0
+
+    # A sweep listed downstream-first only closes what is already unblocked:
+    # the batch is applied task by task, in the order given, so the two still
+    # waiting fall out with a reason rather than failing the call.
+    sweep = client.post(
+        f"{tasks_url}/bulk",
+        json={"task_ids": [ship["id"], changelog["id"], migrate["id"]], "status": "done"},
+        headers=lead_headers,
+    ).json()
+    assert sweep["updated"] == [migrate["id"]]
+    assert sorted(failure["task_id"] for failure in sweep["failed"]) == sorted(
+        [changelog["id"], ship["id"]]
+    )
+
+    # With the migration done, the rest go through.
+    second_sweep = client.post(
+        f"{tasks_url}/bulk",
+        json={"task_ids": [changelog["id"], ship["id"]], "status": "done"},
+        headers=lead_headers,
+    ).json()
+    assert sorted(second_sweep["updated"]) == sorted([changelog["id"], ship["id"]])
+    assert second_sweep["failed"] == []
+
+    # The watcher heard about the release task moving, and only about that.
+    inbox = client.get("/api/v1/notifications", headers=reviewer_headers).json()
+    assert [row["notification_type"] for row in inbox] == ["task_updated"]
+    assert inbox[0]["data"]["status"] == "done"
+
+    # The assignee heard about the assignment, not about the lead's sweep.
+    dev_inbox = client.get("/api/v1/notifications", headers=dev_headers).json()
+    assert [row["notification_type"] for row in dev_inbox] == ["task_assigned"]
+
+    after = client.get(stats_url, headers=lead_headers).json()
+    assert after["tasks"]["done"] == 3
+    assert after["tasks"]["completion_rate"] == 1.0
+    assert after["tasks"]["blocked"] == 0
+
+    org_stats = client.get(f"/api/v1/organizations/{org['id']}/stats", headers=lead_headers).json()
+    assert org_stats["projects"] == 1
+    assert org_stats["tasks"]["total"] == 3
+    assert [row["name"] for row in org_stats["per_project"]] == ["1.0"]
+    by_assignee = {row["assignee_id"]: row for row in org_stats["by_assignee"]}
+    assert by_assignee[dev_id]["total"] == 1
+    assert by_assignee[None]["total"] == 2

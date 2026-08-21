@@ -5,6 +5,12 @@ single UPDATE statement. A bulk edit that skipped the service would also skip
 the timeline entry, the assignment notification, the webhook and the blocker
 gate — and a task edited in bulk would quietly have a different history from
 the same task edited on its own.
+
+One consequence worth knowing: the batch is applied in the order it is given,
+so closing a dependency chain in one call works if the blockers come first and
+leaves the rest reported as blocked if they don't. Reordering the batch behind
+the caller's back would be worse — a per-task report you can't line up against
+what you sent is not much of a report.
 """
 
 import uuid

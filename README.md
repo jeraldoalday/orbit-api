@@ -147,6 +147,11 @@ gets the same timeline entry, notification and webhook as one edited on its
 own. Title and description aren't bulk-editable, and `BULK_TASK_MAX_ITEMS`
 caps the batch.
 
+The batch is applied in the order given. Closing a dependency chain in one call
+therefore works if the blockers are listed first, and reports the rest as
+blocked if they aren't — reordering it silently would produce a per-task report
+that no longer lines up with what was sent.
+
 ### Statistics
 
 `GET .../projects/{id}/stats` and `GET /organizations/{id}/stats` answer what a
