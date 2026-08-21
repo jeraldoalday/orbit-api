@@ -63,6 +63,10 @@ claims, so an event is not posted twice.
 - **Day 12:** Webhooks — org-level subscriptions with SSRF-guarded targets, HMAC-signed deliveries, and a separate worker with leasing and exponential backoff.
 - **Day 13:** Audit log + soft delete/restore for projects and tasks, with an owner-only purge.
 - **Day 14:** Polish & ops — OpenAPI cleanup and schema guards, plus a faster test suite (structured logging, request-ID middleware, and the Dockerfile landed early, alongside day 10).
+- **Day 15:** Task dependencies — a per-project "must finish first" graph with cycle detection, and a gate that refuses to complete a task while a blocker is open.
+- **Day 16:** Bulk task operations — one edit or one delete applied across a selection, reported per task rather than per batch.
+- **Day 17:** Statistics — task counts by status, priority, assignee and due date for a project and for a whole organization, visibility-aware.
+- **Day 18:** Task watchers — following a task you aren't assigned to, with a de-duplicated notification fan-out on status changes and comments.
 
 ## Project layout
 
@@ -109,6 +113,68 @@ with more than one replica the containers would race — so run
 Interactive docs are served at `/docs` everywhere except production, where
 publishing a map of the surface buys nothing.
 
+### Task dependencies
+
+A dependency is a directed "must finish first" edge between two tasks in the
+same project. `POST .../tasks/{id}/dependencies` adds one, `GET` returns the
+task's immediate neighbourhood — what it waits on, what waits on it, and which
+of its blockers are still open — and `DELETE .../{depends_on_id}` removes one.
+
+Every edge is checked before it is written: no self-edges, no second copy of an
+existing edge, and no edge whose blocker can already reach back to the task.
+The graph therefore stays acyclic by construction, which is what lets the
+completion gate look only at a task's *direct* blockers instead of walking the
+whole graph on every status change.
+
+Moving a task to `done` while something it depends on is open fails with 409,
+naming the blockers. A soft-deleted blocker doesn't count — it has been taken
+out of the project, and letting it hold a live task would mean deleting a task
+could freeze another one with no way back. Edges never cross projects: a
+blocker in a project the caller can't see would turn a refusal into one they
+could never explain or clear.
+
+### Bulk edits
+
+`POST .../tasks/bulk` applies one change — status, priority, assignee or due
+date — across a selection, and `POST .../tasks/bulk/delete` soft-deletes one.
+Both answer 200 with a per-task breakdown (`updated`, `unchanged`, `failed`
+with a reason) rather than one verdict for the whole batch: a real selection
+routinely contains a task somebody else just deleted or one an open blocker
+holds, and discarding the rest over it would defeat the point.
+
+Each task still goes through the ordinary update path, so a task edited in bulk
+gets the same timeline entry, notification and webhook as one edited on its
+own. Title and description aren't bulk-editable, and `BULK_TASK_MAX_ITEMS`
+caps the batch.
+
+### Statistics
+
+`GET .../projects/{id}/stats` and `GET /organizations/{id}/stats` answer what a
+dashboard opens with: counts by status and priority, how many tasks are
+overdue or due within a week, how many are unassigned or held by an unfinished
+dependency, and a per-assignee breakdown. Every number is a `GROUP BY` or a
+`COUNT` in the database rather than a pass over loaded rows.
+
+The org view counts only projects the caller can see, totals included. A count
+that swept in a restricted project they were kept off would report its size —
+and its existence — through a route with no 404 to hide behind.
+
+### Watchers
+
+Assignment notifies one person and a mention notifies whoever is named;
+watching covers everyone else with a stake — a reviewer, whoever filed the
+task, a lead tracking a release — without handing any of them the work.
+
+`POST .../tasks/{id}/watchers` with no body watches it yourself, which a plain
+viewer may do. Adding *someone else* (by email) changes the task's audience and
+needs editor rights, and the target has to be able to reach the project.
+
+Watchers hear about status changes and new comments, not about every field:
+titles and priorities move often enough that notifying on them trains people to
+ignore the inbox. Anyone already notified another way — the assignee, someone
+mentioned, whoever made the change — is skipped, so one write leaves at most
+one row per person.
+
 ### Attachment storage
 
 Attachment bytes live behind an `ObjectStorage` interface; the shipped backend
@@ -117,6 +183,14 @@ wrong for more than one — swap in an S3/GCS backend before scaling out. Metada
 rows and objects are written object-first and deleted row-first, so the worst
 failure case is an orphaned object rather than a row promising a download that
 can't succeed.
+
+Two budgets bound a task: `ATTACHMENT_MAX_PER_TASK` files, each at most
+`ATTACHMENT_MAX_BYTES`, and `ATTACHMENT_MAX_TOTAL_BYTES_PER_TASK` across all of
+them together. The last one matters because the first two multiply — without
+it, twenty files of ten megabytes is a perfectly legal two hundred. Uploads are
+streamed, so the total is checked once before the body is read (refusing an
+already-full task cheaply) and once after, when the size is finally known; an
+upload that busts the budget deletes the object it just wrote.
 
 ### Webhook delivery
 
