@@ -13,6 +13,7 @@ from app.api.v1.routers import (
     project_members,
     projects,
     search,
+    stats,
     task_comments,
     task_dependencies,
     task_labels,
@@ -39,5 +40,6 @@ api_router.include_router(invitations.router)
 api_router.include_router(invitations.accept_router)
 api_router.include_router(notifications.router)
 api_router.include_router(search.router)
+api_router.include_router(stats.router)
 api_router.include_router(webhooks.router)
 api_router.include_router(audit_logs.router)
