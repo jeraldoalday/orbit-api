@@ -1,7 +1,7 @@
 import uuid
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.membership import Membership, MembershipRole, role_at_least
@@ -132,20 +132,37 @@ def remove_project_member(db: Session, project_member: ProjectMember) -> None:
     db.commit()
 
 
+def visible_project_condition(membership: Membership) -> Optional[ColumnElement]:
+    """A WHERE clause limiting `Project` to what this member may see.
+
+    None means "no restriction needed" — org admins and owners see every
+    project — which callers apply as "add nothing to the query". Every query
+    that spans projects (listing, search, statistics) needs the same
+    condition, and three copies of it is three places for one to be forgotten
+    the next time visibility grows a case.
+    """
+    if role_at_least(membership.role, MembershipRole.ADMIN):
+        return None
+
+    # Plain members see open projects plus the restricted ones they're on.
+    member_project_ids = select(ProjectMember.project_id).where(
+        ProjectMember.user_id == membership.user_id
+    )
+    return or_(
+        Project.visibility == ProjectVisibility.OPEN,
+        Project.id.in_(member_project_ids),
+    )
+
+
 def list_visible_projects(
     db: Session, org_id: uuid.UUID, membership: Membership, *, limit: int = 50, offset: int = 0
 ) -> list[Project]:
-    """Projects in an org the caller may see, newest-name-first and paginated."""
+    """Projects in an org the caller may see, name-ordered and paginated."""
     stmt = select(Project).where(Project.organization_id == org_id, Project.deleted_at.is_(None))
 
-    if not role_at_least(membership.role, MembershipRole.ADMIN):
-        # Plain members see open projects plus the restricted ones they're on.
-        member_project_ids = select(ProjectMember.project_id).where(
-            ProjectMember.user_id == membership.user_id
-        )
-        stmt = stmt.where(
-            (Project.visibility == ProjectVisibility.OPEN) | (Project.id.in_(member_project_ids))
-        )
+    visible = visible_project_condition(membership)
+    if visible is not None:
+        stmt = stmt.where(visible)
 
     stmt = stmt.order_by(Project.name, Project.id).limit(limit).offset(offset)
     return list(db.execute(stmt).scalars().all())

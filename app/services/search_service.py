@@ -4,10 +4,10 @@ from typing import Optional
 from sqlalchemy import ColumnElement, and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models.membership import Membership, MembershipRole, role_at_least
-from app.models.project import Project, ProjectVisibility
-from app.models.project_member import ProjectMember
+from app.models.membership import Membership
+from app.models.project import Project
 from app.models.task import Task
+from app.services.project_member_service import visible_project_condition
 
 # A pathological query ("a b c d e ..." ) would otherwise turn into an unbounded
 # pile of LIKE predicates; ten terms is far past what a search box produces.
@@ -49,10 +49,7 @@ def _match_clause(
 ) -> ColumnElement:
     """Every term must appear somewhere in the title or the body (AND of ORs)."""
     return and_(
-        *[
-            or_(_contains(title_column, term), _contains(body_column, term))
-            for term in terms
-        ]
+        *[or_(_contains(title_column, term), _contains(body_column, term)) for term in terms]
     )
 
 
@@ -65,19 +62,6 @@ def _score_expression(title_column: ColumnElement, query: str) -> ColumnElement:
         (lowered.like(f"{escaped}%", escape="\\"), _SCORE_PREFIX),
         (lowered.like(f"%{escaped}%", escape="\\"), _SCORE_CONTAINS),
         else_=_SCORE_BODY,
-    )
-
-
-def _visible_project_filter(membership: Membership) -> Optional[ColumnElement]:
-    """Restrict a query to projects the caller can see, or None for admins."""
-    if role_at_least(membership.role, MembershipRole.ADMIN):
-        return None
-    member_project_ids = select(ProjectMember.project_id).where(
-        ProjectMember.user_id == membership.user_id
-    )
-    return or_(
-        Project.visibility == ProjectVisibility.OPEN,
-        Project.id.in_(member_project_ids),
     )
 
 
@@ -105,7 +89,7 @@ def search_projects(
         .limit(limit)
     )
 
-    visible = _visible_project_filter(membership)
+    visible = visible_project_condition(membership)
     if visible is not None:
         stmt = stmt.where(visible)
 
@@ -144,7 +128,7 @@ def search_tasks(
     if project_id is not None:
         stmt = stmt.where(Task.project_id == project_id)
 
-    visible = _visible_project_filter(membership)
+    visible = visible_project_condition(membership)
     if visible is not None:
         stmt = stmt.where(visible)
 
