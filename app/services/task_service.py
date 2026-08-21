@@ -20,6 +20,7 @@ from app.services.audit_service import record_audit
 from app.services.membership_service import get_membership
 from app.services.notification_service import create_notification
 from app.services.task_activity_service import record_activity
+from app.services.task_dependency_service import open_blockers
 from app.services.webhook_events import emit_task_event
 
 TaskSortField = Literal["created_at", "title", "status", "priority", "due_date"]
@@ -47,6 +48,15 @@ _SORT_COLUMNS: dict[str, object] = {
 
 class AssigneeNotMemberError(Exception):
     pass
+
+
+class TaskBlockedError(Exception):
+    """Raised when a task is completed while something it depends on is open."""
+
+    def __init__(self, blockers: list[Task]) -> None:
+        self.blockers = blockers
+        titles = ", ".join(task.title for task in blockers)
+        super().__init__(f"Blocked by unfinished tasks: {titles}")
 
 
 def _check_assignee_is_member(db: Session, project: Project, assignee_id: uuid.UUID) -> None:
@@ -178,6 +188,16 @@ def update_task(
 ) -> Task:
     fields_set = task_in.model_fields_set
     changes: dict[str, dict[str, object]] = {}
+
+    # Checked before anything is assigned: raising halfway through would leave
+    # the fields already written pending on the session, to be committed by
+    # whatever calls commit() next.
+    if task_in.status == TaskStatus.DONE and task.status != TaskStatus.DONE:
+        # The dependency graph exists to stop exactly this: marking work
+        # finished while what it was waiting on still isn't.
+        blockers = open_blockers(db, task.id)
+        if blockers:
+            raise TaskBlockedError(blockers)
 
     if task_in.title is not None and task_in.title != task.title:
         changes["title"] = {"from": task.title, "to": task_in.title}

@@ -24,6 +24,7 @@ from app.models.user import User
 from app.schemas.task import TaskCreate, TaskRead, TaskUpdate
 from app.services.task_service import (
     AssigneeNotMemberError,
+    TaskBlockedError,
     create_task,
     list_deleted_tasks,
     list_tasks,
@@ -125,6 +126,11 @@ def update(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
+    except TaskBlockedError as exc:
+        # 409, not 422: the request is well-formed and would be accepted the
+        # moment the blockers close, which is a state conflict rather than a
+        # validation error.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
