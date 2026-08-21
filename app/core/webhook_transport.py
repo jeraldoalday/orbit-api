@@ -24,18 +24,14 @@ class TransportResponse:
 
 class WebhookTransport(ABC):
     @abstractmethod
-    def post(
-        self, url: str, body: bytes, headers: dict, *, timeout: float
-    ) -> TransportResponse:
+    def post(self, url: str, body: bytes, headers: dict, *, timeout: float) -> TransportResponse:
         """POST ``body`` to ``url``, or raise :class:`TransportError`."""
 
 
 class HttpxTransport(WebhookTransport):
     """The production transport."""
 
-    def post(
-        self, url: str, body: bytes, headers: dict, *, timeout: float
-    ) -> TransportResponse:
+    def post(self, url: str, body: bytes, headers: dict, *, timeout: float) -> TransportResponse:
         import httpx
 
         try:

@@ -37,9 +37,7 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)) -> UserRead:
     try:
         user = create_user(db, user_in)
     except EmailAlreadyRegisteredError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return user
 
 

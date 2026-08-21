@@ -162,9 +162,7 @@ def list_subscription_deliveries(
     limit: int = Query(default=settings.list_default_limit, ge=1, le=settings.list_max_limit),
     offset: int = Query(default=0, ge=0),
 ) -> list[WebhookDeliveryRead]:
-    return list_deliveries(
-        db, subscription.id, status=delivery_status, limit=limit, offset=offset
-    )
+    return list_deliveries(db, subscription.id, status=delivery_status, limit=limit, offset=offset)
 
 
 @router.get(

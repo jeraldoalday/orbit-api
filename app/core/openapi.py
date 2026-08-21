@@ -67,6 +67,7 @@ TAGS_METADATA = [
     {"name": "audit", "description": "Read-only trail of consequential actions."},
 ]
 
+
 def generate_operation_id(route) -> str:
     """A readable, stable operation id: ``tasks-restore`` rather than
     ``restore_api_v1_organizations__org_id__projects...post``.

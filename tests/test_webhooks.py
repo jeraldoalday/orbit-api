@@ -311,8 +311,6 @@ def test_a_plain_member_cannot_read_deliveries(client, setup):
     member_headers = _register_and_login(client, email="member@example.com")
     _add_org_member(client, owner_headers, org["id"], "member@example.com")
 
-    response = client.get(
-        _url(org["id"], f"/{created['id']}/deliveries"), headers=member_headers
-    )
+    response = client.get(_url(org["id"], f"/{created['id']}/deliveries"), headers=member_headers)
 
     assert response.status_code == 403

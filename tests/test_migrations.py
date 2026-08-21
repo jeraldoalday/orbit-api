@@ -66,17 +66,14 @@ def test_no_downgrade_is_left_as_a_stub():
 
 
 def test_every_model_table_has_a_migration():
-    migration_source = "\n".join(
-        path.read_text() for path in sorted(VERSIONS_DIR.glob("*.py"))
-    )
+    migration_source = "\n".join(path.read_text() for path in sorted(VERSIONS_DIR.glob("*.py")))
 
     # Older migrations were generated with single-quoted names, newer ones
     # with double quotes, so accept either spelling of the table literal.
     missing = [
         table_name
         for table_name in Base.metadata.tables
-        if f'"{table_name}"' not in migration_source
-        and f"'{table_name}'" not in migration_source
+        if f'"{table_name}"' not in migration_source and f"'{table_name}'" not in migration_source
     ]
 
     assert missing == [], f"tables with no migration: {missing}"

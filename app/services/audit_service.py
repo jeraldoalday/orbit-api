@@ -78,7 +78,5 @@ def list_audit_logs(
         stmt = stmt.where(AuditLog.created_at <= until)
 
     # Newest first: a trail is read from the incident backwards.
-    stmt = (
-        stmt.order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(limit).offset(offset)
-    )
+    stmt = stmt.order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(limit).offset(offset)
     return list(db.execute(stmt).scalars().all())

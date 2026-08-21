@@ -432,9 +432,7 @@ def test_delete_notification(client):
     )
     notification = client.get("/api/v1/notifications", headers=member_headers).json()[0]
 
-    response = client.delete(
-        f"/api/v1/notifications/{notification['id']}", headers=member_headers
-    )
+    response = client.delete(f"/api/v1/notifications/{notification['id']}", headers=member_headers)
 
     assert response.status_code == 204
     assert client.get("/api/v1/notifications", headers=member_headers).json() == []

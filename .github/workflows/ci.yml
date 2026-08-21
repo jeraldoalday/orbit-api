@@ -30,6 +30,9 @@ jobs:
       - name: Lint
         run: ruff check .
 
+      - name: Check formatting
+        run: black --check .
+
       - name: Run unit tests
         run: >
           pytest -m "not integration" --cov=app

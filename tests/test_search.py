@@ -253,9 +253,9 @@ def test_search_requires_a_query(client):
     headers, org, _project = _setup(client)
 
     assert _search(client, headers, org["id"], "q=").status_code == 422
-    assert client.get(
-        f"/api/v1/organizations/{org['id']}/search", headers=headers
-    ).status_code == 422
+    assert (
+        client.get(f"/api/v1/organizations/{org['id']}/search", headers=headers).status_code == 422
+    )
 
 
 def test_blank_query_returns_no_results(client):

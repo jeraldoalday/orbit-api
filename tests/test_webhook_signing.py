@@ -146,9 +146,7 @@ def test_an_over_long_url_is_rejected():
 
 def test_resolution_rejects_a_name_pointing_at_an_internal_address(monkeypatch):
     """A public-looking name aimed at an internal address is caught by DNS."""
-    monkeypatch.setattr(
-        "app.core.webhook_url._resolved_addresses", lambda hostname: ["10.1.2.3"]
-    )
+    monkeypatch.setattr("app.core.webhook_url._resolved_addresses", lambda hostname: ["10.1.2.3"])
 
     with pytest.raises(InvalidWebhookUrlError):
         validate_webhook_url("http://sneaky.example.com/hook", resolve=True)

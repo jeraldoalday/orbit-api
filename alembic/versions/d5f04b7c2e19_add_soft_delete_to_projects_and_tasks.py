@@ -23,9 +23,7 @@ depends_on: Union[str, Sequence[str], None] = None
 # is indexed rather than left to a sequential scan. Existing rows are live, and
 # NULL is exactly that, so no backfill is needed.
 def upgrade() -> None:
-    op.add_column(
-        "projects", sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True)
-    )
+    op.add_column("projects", sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True))
     op.create_index("ix_projects_deleted_at", "projects", ["deleted_at"], unique=False)
 
     op.add_column("tasks", sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True))

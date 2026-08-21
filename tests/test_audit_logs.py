@@ -172,9 +172,7 @@ def test_membership_changes_are_recorded(client, setup):
         json={"role": "admin"},
         headers=headers,
     )
-    client.delete(
-        f"/api/v1/organizations/{org['id']}/members/{added['id']}", headers=headers
-    )
+    client.delete(f"/api/v1/organizations/{org['id']}/members/{added['id']}", headers=headers)
 
     entries = _entries(client, headers, org["id"], "?resource_type=membership")
     assert [entry["action"] for entry in entries] == [

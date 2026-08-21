@@ -209,9 +209,7 @@ def test_project_role_narrows_access_on_open_project(client):
 
 def test_org_admin_keeps_access_despite_viewer_project_role(client):
     owner_headers, admin_headers, org = _setup_org_with_member(client, "admin@example.com")
-    members = client.get(
-        f"/api/v1/organizations/{org['id']}/members", headers=owner_headers
-    ).json()
+    members = client.get(f"/api/v1/organizations/{org['id']}/members", headers=owner_headers).json()
     admin_membership = next(m for m in members if m["user"]["email"] == "admin@example.com")
     client.patch(
         f"/api/v1/organizations/{org['id']}/members/{admin_membership['id']}",
@@ -432,9 +430,7 @@ def test_removing_an_org_member_leaves_other_orgs_project_roles_intact(client):
     owner_headers, member_headers, org = _setup_org_with_member(client)
     other_org = _create_org(client, owner_headers, name="Other Org")
     _add_org_member(client, owner_headers, other_org["id"], "member@example.com")
-    other_project = _create_project(
-        client, owner_headers, other_org["id"], visibility="restricted"
-    )
+    other_project = _create_project(client, owner_headers, other_org["id"], visibility="restricted")
     client.post(
         _members_url(other_org["id"], other_project["id"]),
         json={"email": "member@example.com", "role": "editor"},
