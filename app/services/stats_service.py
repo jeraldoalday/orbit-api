@@ -100,8 +100,9 @@ def task_stats(
         by_status={status.value: by_status_raw.get(status, 0) for status in TaskStatus},
         by_priority={priority.value: by_priority_raw.get(priority, 0) for priority in TaskPriority},
         done=done,
-        # Rounded to whole percent-of-one: more precision than that is noise
-        # from a count that changes all day.
+        # Four decimal places is a hundredth of a percent — enough to render
+        # any bar or figure, and short of the digits a ratio of two integers
+        # would otherwise trail behind it.
         completion_rate=round(done / total, 4) if total else 0.0,
         overdue=count(
             Task.status != TaskStatus.DONE,
