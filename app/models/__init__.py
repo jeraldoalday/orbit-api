@@ -12,6 +12,7 @@ from app.models.task_activity import TaskActivity, TaskActivityType
 from app.models.task_comment import TaskComment
 from app.models.task_dependency import TaskDependency
 from app.models.task_label import TaskLabel
+from app.models.task_watcher import TaskWatcher
 from app.models.user import User
 from app.models.webhook import (
     DeliveryStatus,
@@ -42,6 +43,7 @@ __all__ = [
     "Notification",
     "NotificationType",
     "TaskLabel",
+    "TaskWatcher",
     "Attachment",
     "AuditLog",
     "AuditAction",

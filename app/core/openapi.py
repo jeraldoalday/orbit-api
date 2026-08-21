@@ -54,6 +54,10 @@ TAGS_METADATA = [
         "description": "Which tasks must finish before which others can.",
     },
     {"name": "task-labels", "description": "Attaching org labels to a task."},
+    {
+        "name": "task-watchers",
+        "description": "Following a task you are not assigned to.",
+    },
     {"name": "labels", "description": "Org-wide label definitions."},
     {"name": "attachments", "description": "Files uploaded against a task."},
     {"name": "notifications", "description": "The signed-in user's inbox."},

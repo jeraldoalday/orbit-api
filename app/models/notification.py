@@ -20,6 +20,10 @@ class NotificationType(str, enum.Enum):
     TASK_ASSIGNED = "task_assigned"
     TASK_COMMENTED = "task_commented"
     MENTIONED = "mentioned"
+    # Sent to watchers when a task they follow moves. The assignee has
+    # TASK_ASSIGNED and a mention has MENTIONED; this is for everyone whose
+    # interest in the task is their own choice rather than an allocation.
+    TASK_UPDATED = "task_updated"
 
 
 class Notification(UUIDPKMixin, TimestampMixin, Base):
