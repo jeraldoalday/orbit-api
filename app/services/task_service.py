@@ -59,7 +59,7 @@ class TaskBlockedError(Exception):
         super().__init__(f"Blocked by unfinished tasks: {titles}")
 
 
-def _check_assignee_is_member(db: Session, project: Project, assignee_id: uuid.UUID) -> None:
+def check_assignee_access(db: Session, project: Project, assignee_id: uuid.UUID) -> None:
     """Refuse an assignee who can't reach the project the task lives in.
 
     Org membership alone isn't enough. Assigning a task in a restricted
@@ -102,7 +102,7 @@ def _audit_task(
 
 def create_task(db: Session, project: Project, task_in: TaskCreate, actor: User) -> Task:
     if task_in.assignee_id is not None:
-        _check_assignee_is_member(db, project, task_in.assignee_id)
+        check_assignee_access(db, project, task_in.assignee_id)
 
     task = Task(
         project_id=project.id,
@@ -226,7 +226,7 @@ def update_task(
         task.due_date = task_in.due_date
     if "assignee_id" in fields_set and task_in.assignee_id != task.assignee_id:
         if task_in.assignee_id is not None:
-            _check_assignee_is_member(db, project, task_in.assignee_id)
+            check_assignee_access(db, project, task_in.assignee_id)
         changes["assignee_id"] = {
             "from": str(task.assignee_id) if task.assignee_id else None,
             "to": str(task_in.assignee_id) if task_in.assignee_id else None,

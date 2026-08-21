@@ -22,6 +22,8 @@ from app.models.project_member import ProjectRole
 from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskRead, TaskUpdate
+from app.schemas.task_bulk import BulkTaskDelete, BulkTaskResult, BulkTaskUpdate
+from app.services.task_bulk_service import bulk_delete_tasks, bulk_update_tasks
 from app.services.task_service import (
     AssigneeNotMemberError,
     TaskBlockedError,
@@ -101,6 +103,51 @@ def list_deleted(
     offset: int = Query(default=0, ge=0),
 ) -> list[TaskRead]:
     return list_deleted_tasks(db, project.id, limit=limit, offset=offset)
+
+
+def _check_batch_size(task_ids: list) -> None:
+    if len(task_ids) > settings.bulk_task_max_items:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"At most {settings.bulk_task_max_items} tasks per request",
+        )
+
+
+# Also registered before "/{task_id}", for the same reason "/deleted" is.
+@router.post("/bulk", response_model=BulkTaskResult)
+def bulk_update(
+    payload: BulkTaskUpdate,
+    db: Session = Depends(get_db),
+    project: Project = Depends(get_project_or_404),
+    _role: ProjectRole = Depends(require_project_role(ProjectRole.EDITOR)),
+    current_user: User = Depends(get_current_active_user),
+) -> BulkTaskResult:
+    """Apply one edit to many tasks, reporting on each of them.
+
+    Answers 200 with a per-task breakdown rather than failing the batch: a
+    selection routinely contains something that can't take the edit, and one
+    such task shouldn't discard the other forty-nine.
+    """
+    _check_batch_size(payload.task_ids)
+    try:
+        return bulk_update_tasks(db, project, payload.task_ids, payload.as_changes(), current_user)
+    except AssigneeNotMemberError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+
+
+@router.post("/bulk/delete", response_model=BulkTaskResult)
+def bulk_delete(
+    payload: BulkTaskDelete,
+    db: Session = Depends(get_db),
+    project: Project = Depends(get_project_or_404),
+    _membership: Membership = Depends(require_org_role(MembershipRole.ADMIN)),
+    current_user: User = Depends(get_current_active_user),
+) -> BulkTaskResult:
+    """Soft-delete many tasks. Admin-gated, like deleting one."""
+    _check_batch_size(payload.task_ids)
+    return bulk_delete_tasks(db, project, payload.task_ids, current_user)
 
 
 @router.get("/{task_id}", response_model=TaskRead)

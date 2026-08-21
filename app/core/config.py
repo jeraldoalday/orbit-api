@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     list_default_limit: int = 50
     list_max_limit: int = 100
 
+    # A bulk edit costs one UPDATE plus its activity, notification and
+    # webhook rows per task, all inside one request. The ceiling keeps a
+    # single call from turning into an unbounded amount of work.
+    bulk_task_max_items: int = 100
+
     attachment_storage_dir: str = "var/attachments"
     attachment_max_bytes: int = 10 * 1024 * 1024
     attachment_max_per_task: int = 20
