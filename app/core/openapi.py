@@ -74,6 +74,7 @@ TAGS_METADATA = [
     {"name": "attachments", "description": "Files uploaded against a task."},
     {"name": "notifications", "description": "The signed-in user's inbox."},
     {"name": "search", "description": "Ranked, visibility-aware search across an org."},
+    {"name": "exports", "description": "A project's tasks as a downloadable CSV file."},
     {"name": "stats", "description": "Task counts for a project or a whole org."},
     {"name": "webhooks", "description": "Outbound event subscriptions and their deliveries."},
     {"name": "audit", "description": "Read-only trail of consequential actions."},

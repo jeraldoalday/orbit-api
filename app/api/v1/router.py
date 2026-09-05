@@ -4,6 +4,7 @@ from app.api.v1.routers import (
     attachments,
     audit_logs,
     auth,
+    exports,
     health,
     invitations,
     labels,
@@ -48,6 +49,7 @@ api_router.include_router(labels.router)
 api_router.include_router(invitations.router)
 api_router.include_router(invitations.accept_router)
 api_router.include_router(notifications.router)
+api_router.include_router(exports.router)
 api_router.include_router(search.router)
 api_router.include_router(stats.router)
 api_router.include_router(webhooks.router)

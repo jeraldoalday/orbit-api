@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     # reorder. Past this it is a task list wearing a task's clothes.
     checklist_max_items: int = 100
 
+    # One request turning into an unbounded CSV is the same problem the task
+    # list solves with pagination; an export just needs a much higher ceiling
+    # to still be worth having.
+    export_max_rows: int = 5000
+
     attachment_storage_dir: str = "var/attachments"
     attachment_max_bytes: int = 10 * 1024 * 1024
     attachment_max_per_task: int = 20
