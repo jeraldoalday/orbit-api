@@ -297,3 +297,32 @@ def test_search_returns_no_results_for_unknown_term(client):
     response = _search(client, headers, org["id"], "q=zzzznotfound")
 
     assert response.json() == {"query": "zzzznotfound", "total": 0, "results": []}
+
+
+def test_the_total_counts_the_hits_that_were_returned(client):
+    """The count beside a result set has to describe that result set.
+
+    Each half of the search is capped at `limit` by its own query, so the
+    merged list can be twice as long as the page that comes back. Reporting
+    the pre-cut length as the total told a caller there were two matches while
+    handing them one — and search is capped rather than paginated, so there is
+    no offset that would ever reach the other.
+    """
+    headers, org, project = _setup(client)
+    _create_task(client, headers, org["id"], project["id"], "Website copy")
+
+    response = _search(client, headers, org["id"], "q=website&limit=1")
+
+    body = response.json()
+    assert len(body["results"]) == 1
+    assert body["total"] == 1
+
+
+def test_the_total_still_counts_both_kinds_together(client):
+    headers, org, project = _setup(client)
+    _create_task(client, headers, org["id"], project["id"], "Website copy")
+
+    body = _search(client, headers, org["id"], "q=website").json()
+
+    assert {hit["kind"] for hit in body["results"]} == {"project", "task"}
+    assert body["total"] == 2

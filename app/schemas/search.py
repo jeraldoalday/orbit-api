@@ -15,5 +15,7 @@ class SearchHit(BaseModel):
 
 class SearchResults(BaseModel):
     query: str
+    # How many hits are in `results`, not how many exist: search is capped
+    # rather than paginated, so there is no offset that would reach any more.
     total: int
     results: list[SearchHit]

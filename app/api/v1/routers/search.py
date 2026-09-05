@@ -49,4 +49,11 @@ def search(
     # sort is stable, which keeps each side's own tie-break order intact.
     hits.sort(key=lambda hit: hit.score, reverse=True)
 
-    return SearchResults(query=q, total=len(hits), results=hits[:limit])
+    # `total` counts what is in `results`, after the merge is cut back to the
+    # limit. It cannot be a count of everything that matched: each half of the
+    # search is already capped at `limit` by its own query, so the pre-cut
+    # length is "up to two pages of hits" — a number that means nothing on its
+    # own and, reported as a total, told a caller there were forty matches
+    # while handing them twenty with no way to reach the rest.
+    results = hits[:limit]
+    return SearchResults(query=q, total=len(results), results=results)
