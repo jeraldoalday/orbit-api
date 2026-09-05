@@ -61,15 +61,6 @@ def get_project(
     return db.execute(stmt).scalar_one_or_none()
 
 
-def list_projects(
-    db: Session, org_id: uuid.UUID, *, include_deleted: bool = False
-) -> list[Project]:
-    stmt = select(Project).where(Project.organization_id == org_id)
-    if not include_deleted:
-        stmt = stmt.where(Project.deleted_at.is_(None))
-    return list(db.execute(stmt.order_by(Project.name, Project.id)).scalars().all())
-
-
 def list_deleted_projects(
     db: Session, org_id: uuid.UUID, *, limit: int = 50, offset: int = 0
 ) -> list[Project]:
