@@ -9,6 +9,7 @@ from app.models.project import Project, ProjectVisibility
 from app.models.project_member import ProjectMember, ProjectRole
 from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.task_activity import TaskActivity, TaskActivityType
+from app.models.task_checklist_item import TaskChecklistItem
 from app.models.task_comment import TaskComment
 from app.models.task_dependency import TaskDependency
 from app.models.task_label import TaskLabel
@@ -33,6 +34,7 @@ __all__ = [
     "Task",
     "TaskStatus",
     "TaskPriority",
+    "TaskChecklistItem",
     "TaskComment",
     "TaskDependency",
     "TaskActivity",

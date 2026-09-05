@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     # single call from turning into an unbounded amount of work.
     bulk_task_max_items: int = 100
 
+    # A checklist is meant to be read at a glance and is rewritten whole by a
+    # reorder. Past this it is a task list wearing a task's clothes.
+    checklist_max_items: int = 100
+
     attachment_storage_dir: str = "var/attachments"
     attachment_max_bytes: int = 10 * 1024 * 1024
     attachment_max_per_task: int = 20

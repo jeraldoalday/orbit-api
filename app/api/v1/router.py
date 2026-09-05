@@ -14,6 +14,7 @@ from app.api.v1.routers import (
     projects,
     search,
     stats,
+    task_checklist,
     task_comments,
     task_dependencies,
     task_labels,
@@ -32,6 +33,7 @@ api_router.include_router(memberships.router)
 api_router.include_router(projects.router)
 api_router.include_router(project_members.router)
 api_router.include_router(tasks.router)
+api_router.include_router(task_checklist.router)
 api_router.include_router(task_comments.router)
 api_router.include_router(task_dependencies.router)
 api_router.include_router(task_labels.router)
