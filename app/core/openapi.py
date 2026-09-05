@@ -66,6 +66,10 @@ TAGS_METADATA = [
         "name": "task-watchers",
         "description": "Following a task you are not assigned to.",
     },
+    {
+        "name": "time-tracking",
+        "description": "Work logged against a task, and per-project reports of it.",
+    },
     {"name": "labels", "description": "Org-wide label definitions."},
     {"name": "attachments", "description": "Files uploaded against a task."},
     {"name": "notifications", "description": "The signed-in user's inbox."},

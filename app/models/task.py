@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -68,6 +68,9 @@ class Task(UUIDPKMixin, TimestampMixin, SoftDeleteMixin, Base):
     due_date: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
+    # What the task was expected to cost, in the same unit the work is logged
+    # in. Null means nobody estimated it, which is different from zero.
+    estimate_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     project: Mapped["Project"] = relationship(back_populates="tasks")
     assignee: Mapped[Optional["User"]] = relationship()

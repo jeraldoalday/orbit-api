@@ -131,6 +131,7 @@ def create_task(db: Session, project: Project, task_in: TaskCreate, actor: User)
         milestone_id=task_in.milestone_id,
         priority=task_in.priority,
         due_date=task_in.due_date,
+        estimate_minutes=task_in.estimate_minutes,
     )
     db.add(task)
     db.flush()
@@ -250,6 +251,12 @@ def update_task(
             "to": task_in.due_date.isoformat() if task_in.due_date else None,
         }
         task.due_date = task_in.due_date
+    if "estimate_minutes" in fields_set and task_in.estimate_minutes != task.estimate_minutes:
+        changes["estimate_minutes"] = {
+            "from": task.estimate_minutes,
+            "to": task_in.estimate_minutes,
+        }
+        task.estimate_minutes = task_in.estimate_minutes
     if "milestone_id" in fields_set and task_in.milestone_id != task.milestone_id:
         if task_in.milestone_id is not None:
             check_milestone(db, project, task_in.milestone_id)

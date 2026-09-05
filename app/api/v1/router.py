@@ -21,6 +21,7 @@ from app.api.v1.routers import (
     task_labels,
     task_watchers,
     tasks,
+    time_entries,
     users,
     webhooks,
 )
@@ -40,6 +41,8 @@ api_router.include_router(task_comments.router)
 api_router.include_router(task_dependencies.router)
 api_router.include_router(task_labels.router)
 api_router.include_router(task_watchers.router)
+api_router.include_router(time_entries.router)
+api_router.include_router(time_entries.report_router)
 api_router.include_router(attachments.router)
 api_router.include_router(labels.router)
 api_router.include_router(invitations.router)
