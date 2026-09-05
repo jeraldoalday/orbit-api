@@ -13,6 +13,7 @@ from typing import Optional
 from sqlalchemy import ColumnElement, case, func, select
 from sqlalchemy.orm import Session, aliased
 
+from app.core.progress import completion_rate
 from app.models.membership import Membership
 from app.models.project import Project
 from app.models.task import Task, TaskPriority, TaskStatus
@@ -100,10 +101,7 @@ def task_stats(
         by_status={status.value: by_status_raw.get(status, 0) for status in TaskStatus},
         by_priority={priority.value: by_priority_raw.get(priority, 0) for priority in TaskPriority},
         done=done,
-        # Four decimal places is a hundredth of a percent — enough to render
-        # any bar or figure, and short of the digits a ratio of two integers
-        # would otherwise trail behind it.
-        completion_rate=round(done / total, 4) if total else 0.0,
+        completion_rate=completion_rate(done, total),
         overdue=count(
             Task.status != TaskStatus.DONE,
             Task.due_date.is_not(None),

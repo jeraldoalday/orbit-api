@@ -12,6 +12,7 @@ from typing import Optional
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from app.core.progress import completion_rate
 from app.models.milestone import Milestone
 from app.models.project import Project
 from app.models.task import Task, TaskStatus
@@ -49,9 +50,7 @@ def _progress(total: int, done: int) -> MilestoneProgress:
         total=total,
         done=done,
         open=total - done,
-        # Four decimal places, the same resolution the task statistics use, so
-        # two percentages rendered side by side agree with each other.
-        completion_rate=round(done / total, 4) if total else 0.0,
+        completion_rate=completion_rate(done, total),
     )
 
 

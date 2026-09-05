@@ -11,6 +11,7 @@ from typing import Optional
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.progress import completion_rate
 from app.models.task import Task
 from app.models.task_checklist_item import TaskChecklistItem
 from app.schemas.task_checklist import ChecklistItemUpdate, ChecklistRead
@@ -72,7 +73,7 @@ def checklist(db: Session, task_id: uuid.UUID) -> ChecklistRead:
         items=items,
         total=total,
         done=done,
-        completion_rate=round(done / total, 4) if total else 0.0,
+        completion_rate=completion_rate(done, total),
     )
 
 
