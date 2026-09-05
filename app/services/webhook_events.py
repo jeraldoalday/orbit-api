@@ -33,6 +33,7 @@ def task_payload(project: Project, task: Task) -> dict[str, Any]:
         "status": task.status.value,
         "priority": task.priority.value,
         "assignee_id": str(task.assignee_id) if task.assignee_id else None,
+        "milestone_id": str(task.milestone_id) if task.milestone_id else None,
         "due_date": task.due_date.isoformat() if task.due_date else None,
         "created_at": task.created_at.isoformat() if task.created_at else None,
     }

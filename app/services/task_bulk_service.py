@@ -25,8 +25,10 @@ from app.schemas.task import TaskUpdate
 from app.schemas.task_bulk import BulkTaskFailure, BulkTaskResult
 from app.services.task_service import (
     AssigneeNotMemberError,
+    MilestoneNotInProjectError,
     TaskBlockedError,
     check_assignee_access,
+    check_milestone,
     get_task,
     soft_delete_task,
     update_task,
@@ -45,7 +47,7 @@ def _unique(task_ids: list[uuid.UUID]) -> list[uuid.UUID]:
 
 def _snapshot(task: Task) -> tuple:
     """The fields a bulk edit can move, for telling a real change from a no-op."""
-    return (task.status, task.priority, task.assignee_id, task.due_date)
+    return (task.status, task.priority, task.assignee_id, task.milestone_id, task.due_date)
 
 
 def bulk_update_tasks(
@@ -62,6 +64,10 @@ def bulk_update_tasks(
     # for every task in the batch.
     if task_in.assignee_id is not None:
         check_assignee_access(db, project, task_in.assignee_id)
+    # Same reasoning for the milestone: a foreign one is wrong for the whole
+    # request, not for one task in it.
+    if task_in.milestone_id is not None:
+        check_milestone(db, project, task_in.milestone_id)
 
     updated: list[uuid.UUID] = []
     unchanged: list[uuid.UUID] = []
@@ -76,7 +82,7 @@ def bulk_update_tasks(
         before = _snapshot(task)
         try:
             update_task(db, project, task, task_in, actor)
-        except (TaskBlockedError, AssigneeNotMemberError) as exc:
+        except (TaskBlockedError, AssigneeNotMemberError, MilestoneNotInProjectError) as exc:
             # One task refusing the edit says nothing about the next one, so
             # the loop carries on and the caller is told which fell out.
             failed.append(BulkTaskFailure(task_id=task_id, reason=str(exc)))

@@ -26,6 +26,7 @@ from app.schemas.task_bulk import BulkTaskDelete, BulkTaskResult, BulkTaskUpdate
 from app.services.task_bulk_service import bulk_delete_tasks, bulk_update_tasks
 from app.services.task_service import (
     AssigneeNotMemberError,
+    MilestoneNotInProjectError,
     TaskBlockedError,
     create_task,
     list_deleted_tasks,
@@ -51,7 +52,7 @@ def create(
 ) -> TaskRead:
     try:
         return create_task(db, project, task_in, current_user)
-    except AssigneeNotMemberError as exc:
+    except (AssigneeNotMemberError, MilestoneNotInProjectError) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
@@ -68,6 +69,7 @@ def list_mine(
     due_before: Optional[datetime] = None,
     due_after: Optional[datetime] = None,
     label_id: Optional[uuid.UUID] = None,
+    milestone_id: Optional[uuid.UUID] = None,
     sort_by: Literal["created_at", "title", "status", "priority", "due_date"] = "created_at",
     order: Literal["asc", "desc"] = "asc",
     limit: int = Query(
@@ -84,6 +86,7 @@ def list_mine(
         due_before=due_before,
         due_after=due_after,
         label_id=label_id,
+        milestone_id=milestone_id,
         sort_by=sort_by,
         order=order,
         limit=limit,
@@ -131,7 +134,7 @@ def bulk_update(
     _check_batch_size(payload.task_ids)
     try:
         return bulk_update_tasks(db, project, payload.task_ids, payload.as_changes(), current_user)
-    except AssigneeNotMemberError as exc:
+    except (AssigneeNotMemberError, MilestoneNotInProjectError) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
@@ -169,7 +172,7 @@ def update(
 ) -> TaskRead:
     try:
         return update_task(db, project, task, task_in, current_user)
-    except AssigneeNotMemberError as exc:
+    except (AssigneeNotMemberError, MilestoneNotInProjectError) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc

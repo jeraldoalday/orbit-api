@@ -91,7 +91,9 @@ def test_renaming_a_step_leaves_it_ticked(client, setup):
     client.patch(f"{url}/{item['id']}", json={"is_done": True}, headers=headers)
 
     response = client.patch(
-        f"{url}/{item['id']}", json={"content": "Write the migration and review it"}, headers=headers
+        f"{url}/{item['id']}",
+        json={"content": "Write the migration and review it"},
+        headers=headers,
     )
 
     assert response.status_code == 200
@@ -241,9 +243,7 @@ def test_a_non_member_cannot_see_the_checklist(client, setup):
     _owner_headers, org_id, project_id, task_id = setup
     outsider_headers = _register_and_login(client, email="outsider@example.com")
 
-    response = client.get(
-        _checklist_url(org_id, project_id, task_id), headers=outsider_headers
-    )
+    response = client.get(_checklist_url(org_id, project_id, task_id), headers=outsider_headers)
 
     assert response.status_code == 404
 

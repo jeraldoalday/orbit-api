@@ -17,6 +17,7 @@ from app.models.webhook import WebhookEvent
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.services.attachment_service import delete_objects, storage_keys_for_task
 from app.services.audit_service import record_audit
+from app.services.milestone_service import get_milestone
 from app.services.notification_service import create_notification
 from app.services.project_member_service import can_see_project
 from app.services.task_activity_service import record_activity
@@ -51,6 +52,10 @@ class AssigneeNotMemberError(Exception):
     pass
 
 
+class MilestoneNotInProjectError(Exception):
+    """Raised when a task is filed under a milestone from somewhere else."""
+
+
 class TaskBlockedError(Exception):
     """Raised when a task is completed while something it depends on is open."""
 
@@ -70,6 +75,17 @@ def check_assignee_access(db: Session, project: Project, assignee_id: uuid.UUID)
     """
     if not can_see_project(db, project, assignee_id):
         raise AssigneeNotMemberError("Assignee does not have access to this project")
+
+
+def check_milestone(db: Session, project: Project, milestone_id: uuid.UUID) -> None:
+    """Refuse a milestone that isn't this project's.
+
+    Milestone ids are only ever looked up under a project, so a foreign id is
+    indistinguishable from a made-up one here — which is the point: a task in
+    one project must not be filed under another project's plan.
+    """
+    if get_milestone(db, project.id, milestone_id) is None:
+        raise MilestoneNotInProjectError("Milestone not found in this project")
 
 
 def _notify_assignee(
@@ -104,12 +120,15 @@ def _audit_task(
 def create_task(db: Session, project: Project, task_in: TaskCreate, actor: User) -> Task:
     if task_in.assignee_id is not None:
         check_assignee_access(db, project, task_in.assignee_id)
+    if task_in.milestone_id is not None:
+        check_milestone(db, project, task_in.milestone_id)
 
     task = Task(
         project_id=project.id,
         title=task_in.title,
         description=task_in.description,
         assignee_id=task_in.assignee_id,
+        milestone_id=task_in.milestone_id,
         priority=task_in.priority,
         due_date=task_in.due_date,
     )
@@ -143,6 +162,7 @@ def list_tasks(
     due_before: Optional[datetime] = None,
     due_after: Optional[datetime] = None,
     label_id: Optional[uuid.UUID] = None,
+    milestone_id: Optional[uuid.UUID] = None,
     sort_by: TaskSortField = "created_at",
     order: Literal["asc", "desc"] = "asc",
     include_deleted: bool = False,
@@ -163,6 +183,8 @@ def list_tasks(
         stmt = stmt.where(Task.due_date <= due_before)
     if due_after is not None:
         stmt = stmt.where(Task.due_date >= due_after)
+    if milestone_id is not None:
+        stmt = stmt.where(Task.milestone_id == milestone_id)
     if label_id is not None:
         stmt = stmt.join(TaskLabel, TaskLabel.task_id == Task.id).where(
             TaskLabel.label_id == label_id
@@ -228,6 +250,14 @@ def update_task(
             "to": task_in.due_date.isoformat() if task_in.due_date else None,
         }
         task.due_date = task_in.due_date
+    if "milestone_id" in fields_set and task_in.milestone_id != task.milestone_id:
+        if task_in.milestone_id is not None:
+            check_milestone(db, project, task_in.milestone_id)
+        changes["milestone_id"] = {
+            "from": str(task.milestone_id) if task.milestone_id else None,
+            "to": str(task_in.milestone_id) if task_in.milestone_id else None,
+        }
+        task.milestone_id = task_in.milestone_id
     if "assignee_id" in fields_set and task_in.assignee_id != task.assignee_id:
         if task_in.assignee_id is not None:
             check_assignee_access(db, project, task_in.assignee_id)

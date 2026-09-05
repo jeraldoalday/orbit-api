@@ -13,6 +13,7 @@ from app.models.mixins import SoftDeleteMixin, TimestampMixin, UUIDPKMixin
 if TYPE_CHECKING:
     from app.models.attachment import Attachment
     from app.models.label import Label
+    from app.models.milestone import Milestone
     from app.models.project import Project
     from app.models.user import User
 
@@ -45,6 +46,14 @@ class Task(UUIDPKMixin, TimestampMixin, SoftDeleteMixin, Base):
         nullable=True,
         index=True,
     )
+    # SET NULL, not CASCADE: deleting a milestone drops the grouping, never
+    # the work that was filed under it.
+    milestone_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("milestones.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[TaskStatus] = mapped_column(
@@ -62,6 +71,7 @@ class Task(UUIDPKMixin, TimestampMixin, SoftDeleteMixin, Base):
 
     project: Mapped["Project"] = relationship(back_populates="tasks")
     assignee: Mapped[Optional["User"]] = relationship()
+    milestone: Mapped[Optional["Milestone"]] = relationship()
     labels: Mapped[list["Label"]] = relationship(
         secondary="task_labels", back_populates="tasks", viewonly=True
     )

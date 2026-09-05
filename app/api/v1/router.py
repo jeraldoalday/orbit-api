@@ -8,6 +8,7 @@ from app.api.v1.routers import (
     invitations,
     labels,
     memberships,
+    milestones,
     notifications,
     organizations,
     project_members,
@@ -32,6 +33,7 @@ api_router.include_router(organizations.router)
 api_router.include_router(memberships.router)
 api_router.include_router(projects.router)
 api_router.include_router(project_members.router)
+api_router.include_router(milestones.router)
 api_router.include_router(tasks.router)
 api_router.include_router(task_checklist.router)
 api_router.include_router(task_comments.router)

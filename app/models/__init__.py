@@ -3,6 +3,7 @@ from app.models.audit_log import AuditAction, AuditLog, AuditResource
 from app.models.invitation import Invitation, InvitationStatus
 from app.models.label import Label
 from app.models.membership import Membership, MembershipRole
+from app.models.milestone import Milestone
 from app.models.notification import Notification, NotificationType
 from app.models.organization import Organization
 from app.models.project import Project, ProjectVisibility
@@ -42,6 +43,7 @@ __all__ = [
     "Invitation",
     "InvitationStatus",
     "Label",
+    "Milestone",
     "Notification",
     "NotificationType",
     "TaskLabel",

@@ -47,6 +47,10 @@ TAGS_METADATA = [
     {"name": "invitations", "description": "Inviting people who don't have an account yet."},
     {"name": "projects", "description": "Projects, their visibility, and the recycle bin."},
     {"name": "project-members", "description": "Per-project roles layered under org roles."},
+    {
+        "name": "milestones",
+        "description": "Dated goals inside a project that tasks are grouped under.",
+    },
     {"name": "tasks", "description": "Tasks, with filtering, sorting and soft delete."},
     {
         "name": "task-checklist",

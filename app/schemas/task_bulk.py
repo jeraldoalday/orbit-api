@@ -8,7 +8,7 @@ from app.models.task import TaskPriority, TaskStatus
 
 # The fields a bulk edit may set. Kept as an explicit tuple so the "did you ask
 # for anything?" check can't drift out of step with the model.
-_MUTABLE_FIELDS = ("status", "priority", "assignee_id", "due_date")
+_MUTABLE_FIELDS = ("status", "priority", "assignee_id", "milestone_id", "due_date")
 
 
 class BulkTaskUpdate(BaseModel):
@@ -23,6 +23,7 @@ class BulkTaskUpdate(BaseModel):
     status: Optional[TaskStatus] = None
     priority: Optional[TaskPriority] = None
     assignee_id: Optional[uuid.UUID] = None
+    milestone_id: Optional[uuid.UUID] = None
     due_date: Optional[datetime] = None
 
     @model_validator(mode="after")
@@ -35,9 +36,9 @@ class BulkTaskUpdate(BaseModel):
     def as_changes(self) -> dict:
         """The requested edit, with omitted fields left out.
 
-        `assignee_id` and `due_date` are nullable, so an explicit null has to
-        stay distinguishable from an absent key — the first clears the field,
-        the second leaves it alone.
+        `assignee_id`, `milestone_id` and `due_date` are nullable, so an
+        explicit null has to stay distinguishable from an absent key — the
+        first clears the field, the second leaves it alone.
         """
         return {
             field: getattr(self, field)
