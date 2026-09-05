@@ -67,6 +67,7 @@ claims, so an event is not posted twice.
 - **Day 16:** Bulk task operations — one edit or one delete applied across a selection, reported per task rather than per batch.
 - **Day 17:** Statistics — task counts by status, priority, assignee and due date for a project and for a whole organization, visibility-aware.
 - **Day 18:** Task watchers — following a task you aren't assigned to, with a de-duplicated notification fan-out on status changes and comments.
+- **Day 19:** Planning and delivery — task checklists, project milestones with a completion gate, time logging against an estimate with per-project reports, and a CSV export of a project's tasks.
 
 ## Project layout
 
@@ -135,8 +136,8 @@ could never explain or clear.
 
 ### Bulk edits
 
-`POST .../tasks/bulk` applies one change — status, priority, assignee or due
-date — across a selection, and `POST .../tasks/bulk/delete` soft-deletes one.
+`POST .../tasks/bulk` applies one change — status, priority, assignee,
+milestone or due date — across a selection, and `POST .../tasks/bulk/delete` soft-deletes one.
 Both answer 200 with a per-task breakdown (`updated`, `unchanged`, `failed`
 with a reason) rather than one verdict for the whole batch: a real selection
 routinely contains a task somebody else just deleted or one an open blocker
@@ -179,6 +180,76 @@ titles and priorities move often enough that notifying on them trains people to
 ignore the inbox. Anyone already notified another way — the assignee, someone
 mentioned, whoever made the change — is skipped, so one write leaves at most
 one row per person.
+
+### Checklists
+
+`GET/POST .../tasks/{id}/checklist` keeps a task's steps: short lines that are
+either done or not. Subtasks would give every step its own assignee, status,
+comments and notification fan-out, which nobody wants for "write the
+migration"; a checklist is the cheap half of that.
+
+Positions are dense and 0-based. Deleting an item closes the gap it leaves, so
+the next append can't collide with a row that survived, and
+`POST .../checklist/reorder` rewrites the order from a list that must name
+every item on the task exactly once. A partial ordering is refused rather than
+guessed at: leaving the unnamed items wherever they happened to be is how two
+clients drag the same row and both end up wrong. The list response carries
+`total`, `done` and `completion_rate` so a client doesn't recompute them.
+`CHECKLIST_MAX_ITEMS` bounds a list.
+
+### Milestones
+
+A milestone is a dated goal inside one project that tasks are grouped under —
+labels answer "what kind of work is this?" across the org, while a milestone
+answers "what is left before the 12th?". A task belongs to at most one, set
+through `milestone_id` on create, update or a bulk edit, and the task list and
+CSV export both filter on it.
+
+Creating and reshaping a milestone needs project manager rights; filing work
+under one is an ordinary editor's edit to a task. Completing a milestone with
+open tasks under it fails with 409 and a count, the same gate the dependency
+graph puts on a task — `?force=true` overrides it, because cutting scope is a
+real answer and the alternative is closing the tasks with a lie about them
+being done. Completion is a timestamp, so "shipped on the 9th" survives and
+`/reopen` is one column. Deleting a milestone unfiles its tasks and keeps them.
+
+Progress counts live tasks only. A soft-deleted task that stayed in the
+denominator would make a milestone permanently unfinishable, and a whole list
+of milestones is counted in one grouped query rather than one per row.
+
+### Time tracking
+
+Tasks carry `estimate_minutes`; work is logged against them in the same unit
+through `POST .../tasks/{id}/time`, so the two numbers compare without a
+conversion nobody agrees on. Minutes rather than a start/stop timer — the
+timer's failure mode is the one left running overnight, and every report here
+wants a duration anyway.
+
+An entry names the day the work happened (`spent_on`, defaulting to today),
+which is routinely not the day it was written down. Future days are refused
+and one entry is capped at 24 hours: a typo that lands in a report is worse
+than one that bounces. Logging time needs editor rights, but correcting
+somebody else's entry is limited to its author or a project manager.
+
+`GET .../tasks/{id}/time` returns the entries with logged, remaining and
+over-estimate figures. `GET .../projects/{id}/time` reports the project,
+grouped by person and by task and optionally narrowed with `spent_from` /
+`spent_to`; entries on soft-deleted tasks drop out, so the report describes the
+project as it currently stands.
+
+### CSV export
+
+`GET .../projects/{id}/export/tasks.csv` streams a project's tasks as a
+spreadsheet, taking the same filters as the task list — an export that can't
+reproduce what is on screen sends people back to copying rows by hand. Each row
+carries the assignee, milestone, labels, estimate and minutes logged, gathered
+in one query each rather than per row.
+
+Cells starting with `=`, `+`, `-` or `@` are prefixed with an apostrophe: every
+spreadsheet application runs them as formulas, which makes a task title a code
+injection vector into whoever opens the file. Reading a project is enough to
+export it — the file holds what the caller can already page through — and
+`EXPORT_MAX_ROWS` bounds one request.
 
 ### Attachment storage
 
