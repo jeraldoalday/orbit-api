@@ -5,10 +5,14 @@ password hashed at a cost factor of 1, a CORS list that silently includes an
 empty origin — so the parsing and bounds are pinned down.
 """
 
+import pathlib
+
 import pytest
 from pydantic import ValidationError
 
 from app.core.config import Settings
+
+ENV_EXAMPLE = pathlib.Path(__file__).resolve().parent.parent / ".env.example"
 
 BASE = {"database_url": "postgresql+psycopg2://u:p@localhost:5432/db", "jwt_secret_key": "s"}
 
@@ -53,3 +57,26 @@ def test_cors_origins_are_split_and_stripped():
 def test_cors_origins_default_to_none_configured():
     assert _settings().cors_origin_list == []
     assert _settings(cors_origins="").cors_origin_list == []
+
+
+def _example_keys() -> list[str]:
+    return [
+        line.split("=", 1)[0].strip()
+        for line in ENV_EXAMPLE.read_text().splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+
+
+def test_every_key_in_the_env_example_is_a_real_setting():
+    """A key nobody reads is a knob that silently does nothing when turned."""
+    unknown = [key for key in _example_keys() if key.lower() not in Settings.model_fields]
+
+    assert unknown == []
+
+
+def test_the_env_example_lists_each_key_once():
+    """A duplicate is two values for one knob, and the last line quietly wins."""
+    keys = _example_keys()
+
+    duplicates = sorted({key for key in keys if keys.count(key) > 1})
+    assert duplicates == []
