@@ -2,10 +2,12 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from app.schemas.fields import PasswordStr
+
 
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=8, max_length=72)
+    password: PasswordStr
     full_name: str = Field(min_length=1, max_length=200)
 
 

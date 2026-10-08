@@ -45,6 +45,39 @@ def test_register_rejects_short_password(client):
     assert response.status_code == 422
 
 
+def test_register_rejects_a_password_too_long_once_encoded(client):
+    # 72 characters, but each is 2 bytes in UTF-8 - 144 bytes once encoded.
+    # max_length=72 alone counts characters and would wave this through,
+    # straight past the point where bcrypt would silently stop looking at it.
+    response = _register(client, email="dmitri@example.com", password="é" * 72)
+
+    assert response.status_code == 422
+
+
+def test_register_accepts_a_72_byte_multibyte_password(client):
+    # 36 two-byte characters is exactly 72 bytes - the boundary itself has to
+    # still work, not just be rejected past it.
+    response = _register(client, email="elena@example.com", password="é" * 36)
+
+    assert response.status_code == 201
+
+
+def test_login_does_not_match_on_a_truncated_password_prefix(client):
+    # Anything past the 72nd byte of a password is never actually hashed, so
+    # without a check of its own, logging in with the right first 72 bytes and
+    # arbitrary garbage after them would succeed - a password accepted at
+    # registration would only ever be partially checked at login.
+    password = "x" * 72
+    _register(client, email="farhan@example.com", password=password)
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "farhan@example.com", "password": password + "-anything-at-all"},
+    )
+
+    assert response.status_code == 401
+
+
 def test_login_returns_tokens(client):
     _register(client)
 
