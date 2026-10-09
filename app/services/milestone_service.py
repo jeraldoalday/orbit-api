@@ -138,8 +138,19 @@ def create_milestone(db: Session, project: Project, milestone_in: MilestoneCreat
 
 
 def update_milestone(db: Session, milestone: Milestone, changes: MilestoneUpdate) -> Milestone:
-    for field, value in changes.model_dump(exclude_unset=True).items():
-        setattr(milestone, field, value)
+    # `name` has no null meaning, so an explicit null is a no-op rather than an
+    # attempt to blank a NOT NULL column (the same convention `update_project`
+    # and `update_task` follow). `description` and `due_date` are nullable, so
+    # they're checked against what was actually sent instead.
+    fields_set = changes.model_fields_set
+
+    if changes.name is not None:
+        milestone.name = changes.name
+    if "description" in fields_set:
+        milestone.description = changes.description
+    if "due_date" in fields_set:
+        milestone.due_date = changes.due_date
+
     db.commit()
     db.refresh(milestone)
     return milestone

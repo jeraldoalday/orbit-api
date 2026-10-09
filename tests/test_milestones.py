@@ -60,6 +60,64 @@ def test_create_and_read_a_milestone(client, setup):
     assert response.json()["completed_at"] is None
 
 
+def test_updating_a_milestone_changes_the_fields_sent(client, setup):
+    headers, org_id, project_id = setup
+    milestone = _create_milestone(
+        client, headers, org_id, project_id, name="v1.0", description="First public cut"
+    ).json()
+
+    response = client.patch(
+        _milestones_url(org_id, project_id, f"/{milestone['id']}"),
+        json={"name": "v1.1"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "v1.1"
+    assert response.json()["description"] == "First public cut"
+
+
+def test_updating_a_milestone_with_a_null_name_leaves_it_unchanged(client, setup):
+    # `name` is NOT NULL on the model, and has no null meaning in the schema -
+    # an explicit null is a no-op rather than something that should reach the
+    # database and blow up as an integrity error.
+    headers, org_id, project_id = setup
+    milestone = _create_milestone(client, headers, org_id, project_id, name="v1.0").json()
+
+    response = client.patch(
+        _milestones_url(org_id, project_id, f"/{milestone['id']}"),
+        json={"name": None, "description": "Still here"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "v1.0"
+    assert response.json()["description"] == "Still here"
+
+
+def test_updating_a_milestone_can_clear_its_description_and_due_date(client, setup):
+    headers, org_id, project_id = setup
+    milestone = _create_milestone(
+        client,
+        headers,
+        org_id,
+        project_id,
+        name="v1.0",
+        description="First public cut",
+        due_date="2030-01-01T00:00:00Z",
+    ).json()
+
+    response = client.patch(
+        _milestones_url(org_id, project_id, f"/{milestone['id']}"),
+        json={"description": None, "due_date": None},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["description"] is None
+    assert response.json()["due_date"] is None
+
+
 def test_an_empty_milestone_is_zero_per_cent_done(client, setup):
     headers, org_id, project_id = setup
     milestone = _create_milestone(client, headers, org_id, project_id).json()
