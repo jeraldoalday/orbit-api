@@ -24,15 +24,18 @@ _SCORE_BODY = 5
 def tokenize(query: str) -> list[str]:
     """Split a raw query into unique lowercased terms, longest-first.
 
-    Order is preserved for readability but duplicates are dropped so
-    "bug bug bug" doesn't triple the work for a single predicate.
+    Duplicates are dropped so "bug bug bug" doesn't triple the work for a
+    single predicate, and sorting longest-first before the term cap means a
+    query with more than MAX_TERMS words keeps its most selective terms
+    rather than whichever ones happened to come first.
     """
     seen: dict[str, None] = {}
     for token in (query or "").split():
         cleaned = token.strip().lower()
         if cleaned:
             seen.setdefault(cleaned, None)
-    return list(seen)[:MAX_TERMS]
+    terms = sorted(seen, key=len, reverse=True)
+    return terms[:MAX_TERMS]
 
 
 def _escape_like(term: str) -> str:

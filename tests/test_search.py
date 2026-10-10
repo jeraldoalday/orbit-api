@@ -1,3 +1,6 @@
+from app.services.search_service import MAX_TERMS, tokenize
+
+
 def _register_and_login(
     client, email="jane@example.com", password="supersecret1", full_name="Jane Doe"
 ):
@@ -297,6 +300,22 @@ def test_search_returns_no_results_for_unknown_term(client):
     response = _search(client, headers, org["id"], "q=zzzznotfound")
 
     assert response.json() == {"query": "zzzznotfound", "total": 0, "results": []}
+
+
+def test_tokenize_orders_terms_longest_first():
+    """When a query is past MAX_TERMS, the ones kept should be the most
+    selective (longest) rather than whichever came first in the sentence."""
+    assert tokenize("a bb ccc dddd") == ["dddd", "ccc", "bb", "a"]
+
+
+def test_tokenize_keeps_longest_terms_when_over_the_cap():
+    words = [f"term{length}" * length for length in range(1, MAX_TERMS + 5)]
+    terms = tokenize(" ".join(words))
+
+    assert len(terms) == MAX_TERMS
+    assert terms == sorted(terms, key=len, reverse=True)
+    # The longest words in the query must be the ones that survived the cap.
+    assert set(terms) == set(sorted(set(words), key=len, reverse=True)[:MAX_TERMS])
 
 
 def test_the_total_counts_the_hits_that_were_returned(client):
