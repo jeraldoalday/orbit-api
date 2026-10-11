@@ -72,6 +72,13 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: int = 60
     auth_rate_limit_requests: int = 10
     auth_rate_limit_window_seconds: int = 60
+    # X-Forwarded-For is only the real client address when something in front
+    # of this process sets it itself; a caller talking to the API directly can
+    # put anything in that header. Defaulting to False means a deployment with
+    # no such proxy rate-limits by the address the connection actually came
+    # from — the safe default — and one behind a load balancer turns this on
+    # to get the real address instead of the balancer's own.
+    trust_proxy_headers: bool = False
 
     cors_origins: Optional[str] = None
 

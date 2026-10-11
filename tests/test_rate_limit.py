@@ -124,10 +124,17 @@ class _FakeRequest:
         self.client = type("C", (), {"host": host})() if host is not None else None
 
 
-def test_client_key_prefers_forwarded_for():
+def test_client_key_ignores_forwarded_for_by_default():
+    """Without a known proxy in front, the header is just caller input."""
     request = _FakeRequest(headers={"x-forwarded-for": "203.0.113.5, 10.0.0.1"}, host="10.0.0.1")
 
-    assert client_key(request) == "203.0.113.5"
+    assert client_key(request) == "10.0.0.1"
+
+
+def test_client_key_prefers_forwarded_for_when_proxy_is_trusted():
+    request = _FakeRequest(headers={"x-forwarded-for": "203.0.113.5, 10.0.0.1"}, host="10.0.0.1")
+
+    assert client_key(request, trust_proxy=True) == "203.0.113.5"
 
 
 def test_client_key_falls_back_to_peer_address():

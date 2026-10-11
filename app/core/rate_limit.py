@@ -100,12 +100,24 @@ class SlidingWindowRateLimiter:
         self._hits.clear()
 
 
-def client_key(request: Request) -> str:
-    """Identify the caller, preferring the original IP behind a proxy."""
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        # Left-most entry is the original client; the rest are proxy hops.
-        return forwarded.split(",")[0].strip()
+def client_key(request: Request, *, trust_proxy: Optional[bool] = None) -> str:
+    """Identify the caller, preferring the original IP behind a proxy.
+
+    X-Forwarded-For is only honoured when trust_proxy is set: the header is
+    just as easy for a direct caller to send as a proxy is to set it, and
+    reading it unconditionally let anyone bypass the limiter below by sending
+    a different one on every request — the exact brute-forcing AUTH_PATHS
+    exists to slow down. Defaults to the deployment-wide setting, which is off
+    unless something in front of this process is actually known to set it.
+    """
+    if trust_proxy is None:
+        trust_proxy = get_settings().trust_proxy_headers
+
+    if trust_proxy:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            # Left-most entry is the original client; the rest are proxy hops.
+            return forwarded.split(",")[0].strip()
     if request.client is not None and request.client.host:
         return request.client.host
     return "unknown"
