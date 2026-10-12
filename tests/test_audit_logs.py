@@ -298,3 +298,60 @@ def test_a_rejected_change_leaves_no_entry(client, setup):
 
     assert response.status_code == 404
     assert _entries(client, headers, org["id"]) == []
+
+
+def _backdate(db, resource_id, when):
+    import uuid
+
+    from app.models.audit_log import AuditLog
+
+    entry = db.query(AuditLog).filter(AuditLog.resource_id == uuid.UUID(resource_id)).one()
+    entry.created_at = when
+    db.commit()
+
+
+def test_entries_can_be_filtered_by_since(client, setup, db):
+    from datetime import datetime, timedelta, timezone
+
+    headers, org = setup
+    old = _create_project(client, headers, org["id"], name="Old")
+    _create_project(client, headers, org["id"], name="Recent")
+    _backdate(db, old["id"], datetime.now(timezone.utc) - timedelta(days=10))
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat().replace("+00:00", "Z")
+    entries = _entries(client, headers, org["id"], f"?since={cutoff}")
+
+    assert [entry["data"]["name"] for entry in entries] == ["Recent"]
+
+
+def test_entries_can_be_filtered_by_until(client, setup, db):
+    from datetime import datetime, timedelta, timezone
+
+    headers, org = setup
+    old = _create_project(client, headers, org["id"], name="Old")
+    _create_project(client, headers, org["id"], name="Recent")
+    _backdate(db, old["id"], datetime.now(timezone.utc) - timedelta(days=10))
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat().replace("+00:00", "Z")
+    entries = _entries(client, headers, org["id"], f"?until={cutoff}")
+
+    assert [entry["data"]["name"] for entry in entries] == ["Old"]
+
+
+def test_a_date_range_combines_since_and_until(client, setup, db):
+    from datetime import datetime, timedelta, timezone
+
+    headers, org = setup
+    oldest = _create_project(client, headers, org["id"], name="Oldest")
+    middle = _create_project(client, headers, org["id"], name="Middle")
+    _create_project(client, headers, org["id"], name="Newest")
+
+    now = datetime.now(timezone.utc)
+    _backdate(db, oldest["id"], now - timedelta(days=10))
+    _backdate(db, middle["id"], now - timedelta(days=5))
+
+    since = (now - timedelta(days=7)).isoformat().replace("+00:00", "Z")
+    until = (now - timedelta(days=2)).isoformat().replace("+00:00", "Z")
+    entries = _entries(client, headers, org["id"], f"?since={since}&until={until}")
+
+    assert [entry["data"]["name"] for entry in entries] == ["Middle"]
