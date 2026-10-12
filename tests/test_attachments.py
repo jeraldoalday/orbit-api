@@ -434,6 +434,45 @@ def test_delete_objects_survives_a_failing_backend(storage, caplog):
     assert flaky.deleted == ["good-1", "good-2"]
 
 
+def test_a_failed_commit_leaves_no_orphaned_object(client, setup, db, storage, monkeypatch):
+    """The object is written before the row, so a failed commit must clean it up.
+
+    Otherwise a crash between the write and the commit would leave bytes in
+    storage with no row pointing at them — exactly the leak the write-then-insert
+    ordering in create_attachment is meant to avoid.
+    """
+    import uuid as uuid_module
+
+    from app.models.task import Task
+    from app.models.user import User
+    from app.services.attachment_service import create_attachment
+
+    headers, org, project, task = setup
+    task_obj = db.get(Task, uuid_module.UUID(task["id"]))
+    user_obj = db.query(User).filter(User.email == "owner@example.com").one()
+
+    def failing_commit():
+        raise RuntimeError("database went away")
+
+    monkeypatch.setattr(db, "commit", failing_commit)
+
+    with pytest.raises(RuntimeError):
+        create_attachment(
+            db,
+            storage,
+            task_obj,
+            filename="notes.txt",
+            content_type="text/plain",
+            source=io.BytesIO(b"hello"),
+            uploader=user_obj,
+            max_bytes=100,
+            max_per_task=10,
+            max_total_bytes=1000,
+        )
+
+    assert _all_keys(storage) == []
+
+
 # --- the per-task byte budget ----------------------------------------------
 
 
