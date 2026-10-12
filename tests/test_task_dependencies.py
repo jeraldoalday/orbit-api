@@ -370,3 +370,36 @@ def test_purging_a_task_removes_its_edges(client, setup):
 
     graph = client.get(_deps_url(org_id, project_id, blocked["id"]), headers=headers).json()
     assert graph["blocked_by"] == []
+
+
+def test_reaches_refuses_a_chain_deeper_than_the_traversal_limit(db):
+    """The depth guard that keeps an adversarially long chain from being walked forever.
+
+    Built directly against the models rather than through the API: creating
+    a hundred-plus tasks and edges one HTTP call at a time would make this
+    test about the setup, not the limit it's checking.
+    """
+    from app.models.organization import Organization
+    from app.models.project import Project
+    from app.models.task import Task
+    from app.models.task_dependency import TaskDependency
+    from app.services.task_dependency_service import MAX_GRAPH_DEPTH, DependencyCycleError, reaches
+
+    org = Organization(name="Acme Inc", slug="acme-inc")
+    db.add(org)
+    db.flush()
+    project = Project(organization_id=org.id, name="Big Graph")
+    db.add(project)
+    db.flush()
+
+    # A straight chain, each task depending on the one before it, longer than
+    # MAX_GRAPH_DEPTH hops from the last task back to the first.
+    tasks = [Task(project_id=project.id, title=f"Task {i}") for i in range(MAX_GRAPH_DEPTH + 5)]
+    db.add_all(tasks)
+    db.flush()
+    for later, earlier in zip(tasks[1:], tasks):
+        db.add(TaskDependency(task_id=later.id, depends_on_id=earlier.id))
+    db.commit()
+
+    with pytest.raises(DependencyCycleError):
+        reaches(db, tasks[-1].id, tasks[0].id)
