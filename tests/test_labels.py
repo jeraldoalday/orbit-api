@@ -73,6 +73,16 @@ def test_create_duplicate_label_name_rejected(client):
     assert response.status_code == 409
 
 
+def test_create_duplicate_label_name_rejected_case_insensitively(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    client.post(_labels_url(org["id"]), json={"name": "Bug"}, headers=headers)
+
+    response = client.post(_labels_url(org["id"]), json={"name": "bug"}, headers=headers)
+
+    assert response.status_code == 409
+
+
 def test_same_label_name_allowed_in_different_orgs(client):
     headers = _register_and_login(client)
     org_a = _create_org(client, headers, name="Org A")
