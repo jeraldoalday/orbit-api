@@ -603,3 +603,27 @@ def test_clearing_task_description_is_recorded_on_the_timeline(client):
         "from": "Some detail",
         "to": None,
     }
+
+
+def test_changing_task_estimate_is_recorded_on_the_timeline(client):
+    headers, org, project = _setup(client)
+    task = client.post(
+        _tasks_url(org["id"], project["id"]),
+        json={"title": "Ship it", "estimate_minutes": 60},
+        headers=headers,
+    ).json()
+
+    client.patch(
+        _tasks_url(org["id"], project["id"], f"/{task['id']}"),
+        json={"estimate_minutes": 120},
+        headers=headers,
+    )
+
+    timeline = client.get(
+        _tasks_url(org["id"], project["id"], f"/{task['id']}/timeline"), headers=headers
+    ).json()
+    updates = [entry for entry in timeline if entry["kind"] == "activity"]
+    assert updates[-1]["activity"]["data"]["estimate_minutes"] == {
+        "from": 60,
+        "to": 120,
+    }
