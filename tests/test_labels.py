@@ -1,3 +1,11 @@
+import uuid
+
+import pytest
+from sqlalchemy.exc import IntegrityError
+
+from app.models.label import Label
+
+
 def _register_and_login(
     client, email="jane@example.com", password="supersecret1", full_name="Jane Doe"
 ):
@@ -81,6 +89,22 @@ def test_create_duplicate_label_name_rejected_case_insensitively(client):
     response = client.post(_labels_url(org["id"]), json={"name": "bug"}, headers=headers)
 
     assert response.status_code == 409
+
+
+def test_concurrent_case_insensitive_label_names_rejected_at_the_database(client, db):
+    """The service's pre-check only stops a case-insensitive repeat when
+    nothing else is racing it; two requests that both read before either
+    commits would otherwise both pass it. Bypassing the service the way a
+    second such request would proves the database itself refuses the second
+    row rather than relying on the pre-check alone.
+    """
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    client.post(_labels_url(org["id"]), json={"name": "Bug"}, headers=headers)
+
+    db.add(Label(organization_id=uuid.UUID(org["id"]), name="bug"))
+    with pytest.raises(IntegrityError):
+        db.commit()
 
 
 def test_same_label_name_allowed_in_different_orgs(client):

@@ -1,7 +1,7 @@
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -15,7 +15,21 @@ if TYPE_CHECKING:
 
 class Label(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "labels"
-    __table_args__ = (UniqueConstraint("organization_id", "name", name="uq_label_org_name"),)
+    __table_args__ = (
+        UniqueConstraint("organization_id", "name", name="uq_label_org_name"),
+        # The service layer checks for a case-insensitive duplicate before
+        # inserting, but two requests racing each other can both pass that
+        # check before either commits. `uq_label_org_name` above only catches
+        # an exact-case repeat, so without this the race lets "Bug" and "bug"
+        # both land. This index is the backstop the service's IntegrityError
+        # handler relies on to make that rejection actually hold under a race.
+        Index(
+            "uq_label_org_name_ci",
+            "organization_id",
+            text("lower(name)"),
+            unique=True,
+        ),
+    )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
