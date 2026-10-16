@@ -2,6 +2,8 @@
 
 Multi-tenant project & task management backend.
 
+> **How this project is built:** I develop this service with AI coding agents. I decide what the project, task, and access rules should be, review each change and its tests, and merge what holds up.
+
 ## Stack
 
 - FastAPI
