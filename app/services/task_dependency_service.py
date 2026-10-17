@@ -125,10 +125,6 @@ def open_blockers(db: Session, task_id: uuid.UUID) -> list[Task]:
     return list(db.execute(stmt).scalars().all())
 
 
-def is_blocked(db: Session, task_id: uuid.UUID) -> bool:
-    return bool(open_blockers(db, task_id))
-
-
 def add_dependency(
     db: Session,
     project: Project,
