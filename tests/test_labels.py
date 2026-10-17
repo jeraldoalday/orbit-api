@@ -1,9 +1,12 @@
 import uuid
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.models.label import Label
+from app.models.organization import Organization
+from app.services import label_service
 
 
 def _register_and_login(
@@ -105,6 +108,34 @@ def test_concurrent_case_insensitive_label_names_rejected_at_the_database(client
     db.add(Label(organization_id=uuid.UUID(org["id"]), name="bug"))
     with pytest.raises(IntegrityError):
         db.commit()
+
+
+def test_create_label_turns_a_lost_race_into_duplicate_label_error(client, db, monkeypatch):
+    """The test above proves the database rejects the second row; this one
+    proves `create_label` itself survives losing that race. The pre-check is
+    forced to miss the existing name, the way it would if the other request's
+    commit lands in the gap between this call's check and its own commit, and
+    the IntegrityError that `db.commit()` then raises must come out as the
+    ordinary DuplicateLabelError rather than an unhandled database error — and
+    the session must still be usable afterwards.
+    """
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    org_id = uuid.UUID(org["id"])
+
+    db.add(Label(organization_id=org_id, name="Bug", color="#888888"))
+    db.commit()
+
+    monkeypatch.setattr(label_service, "_find_by_name_ci", lambda *_args, **_kwargs: None)
+
+    organization = db.get(Organization, org_id)
+    with pytest.raises(label_service.DuplicateLabelError):
+        label_service.create_label(db, organization, "bug", "#000000")
+
+    # A commit that failed and was rolled back inside create_label must leave
+    # the session able to query normally rather than stuck in a failed state.
+    names = db.execute(select(Label.name).where(Label.organization_id == org_id)).scalars().all()
+    assert names == ["Bug"]
 
 
 def test_same_label_name_allowed_in_different_orgs(client):
