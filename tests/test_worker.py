@@ -10,6 +10,82 @@ class _StubTransport:
         raise AssertionError("the stub transport should not be used")
 
 
+class _StubSession:
+    def __init__(self):
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
+def test_run_once_dispatches_with_the_configured_settings(monkeypatch):
+    """Every webhook setting that governs a pass must reach dispatch_pending untouched."""
+    session = _StubSession()
+    monkeypatch.setattr(worker, "SessionLocal", lambda: session)
+
+    captured = {}
+
+    def _dispatch_pending(db, transport, **kwargs):
+        captured["db"] = db
+        captured["transport"] = transport
+        captured.update(kwargs)
+        return DispatchSummary(attempted=3, succeeded=3)
+
+    monkeypatch.setattr(worker, "dispatch_pending", _dispatch_pending)
+
+    transport = _StubTransport()
+    summary = worker.run_once(transport)
+
+    settings = worker.get_settings()
+    assert summary.attempted == 3
+    assert captured["db"] is session
+    assert captured["transport"] is transport
+    assert captured["limit"] == settings.webhook_batch_size
+    assert captured["max_attempts"] == settings.webhook_max_attempts
+    assert captured["timeout_seconds"] == settings.webhook_timeout_seconds
+    assert captured["backoff_base_seconds"] == settings.webhook_backoff_base_seconds
+    assert captured["lease_seconds"] == settings.webhook_lease_seconds
+    assert captured["verify_target"] == settings.webhook_validate_dns
+    # Closed once the pass is done, so a long-lived session never outlives it.
+    assert session.closed is True
+
+
+def test_run_once_closes_the_session_even_when_the_pass_fails(monkeypatch):
+    session = _StubSession()
+    monkeypatch.setattr(worker, "SessionLocal", lambda: session)
+
+    def _explode(db, transport, **kwargs):
+        raise RuntimeError("dispatch failed")
+
+    monkeypatch.setattr(worker, "dispatch_pending", _explode)
+
+    try:
+        worker.run_once(_StubTransport())
+    except RuntimeError:
+        pass
+    else:  # pragma: no cover - the call must not succeed
+        raise AssertionError("expected a RuntimeError")
+
+    assert session.closed is True
+
+
+def test_run_once_defaults_to_an_httpx_transport_when_none_is_given(monkeypatch):
+    session = _StubSession()
+    monkeypatch.setattr(worker, "SessionLocal", lambda: session)
+
+    captured = {}
+
+    def _dispatch_pending(db, transport, **kwargs):
+        captured["transport"] = transport
+        return DispatchSummary()
+
+    monkeypatch.setattr(worker, "dispatch_pending", _dispatch_pending)
+
+    worker.run_once()
+
+    assert isinstance(captured["transport"], HttpxTransport)
+
+
 def test_run_forever_stops_after_a_shutdown_signal(monkeypatch):
     flag = worker._ShutdownFlag()
     passes = []
