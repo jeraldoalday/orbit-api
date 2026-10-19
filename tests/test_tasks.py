@@ -514,6 +514,38 @@ def test_list_tasks_filters_by_due_date_range(client):
     assert ids == [early["id"]]
 
 
+def test_list_tasks_filters_by_due_after(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+    client.post(
+        _tasks_url(org["id"], project["id"]),
+        json={"title": "Early", "due_date": "2026-01-01T00:00:00Z"},
+        headers=headers,
+    )
+    late = client.post(
+        _tasks_url(org["id"], project["id"]),
+        json={"title": "Late", "due_date": "2026-12-01T00:00:00Z"},
+        headers=headers,
+    ).json()
+    client.post(
+        _tasks_url(org["id"], project["id"]), json={"title": "No due date"}, headers=headers
+    )
+
+    response = client.get(
+        _tasks_url(
+            org["id"],
+            project["id"],
+            "?due_after=2026-06-01T00:00:00Z",
+        ),
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    ids = [t["id"] for t in response.json()]
+    assert ids == [late["id"]]
+
+
 def test_list_tasks_sorts_by_priority_rank_not_alphabetically(client):
     # "high" sorts before "low" alphabetically, so this only passes if sorting
     # uses urgency rank (low < medium < high < urgent) rather than the raw string.
