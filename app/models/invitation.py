@@ -20,6 +20,12 @@ class InvitationStatus(str, enum.Enum):
     PENDING = "pending"
     ACCEPTED = "accepted"
     REVOKED = "revoked"
+    # Never written to the stored column — nothing sweeps the table the way a
+    # background job would, so a lapsed invitation stays PENDING in the
+    # database. This exists so the API layer can report the status it
+    # actually has on read instead of repeating that stale claim; see
+    # `InvitationRead` in app/schemas/invitation.py.
+    EXPIRED = "expired"
 
 
 class Invitation(UUIDPKMixin, TimestampMixin, Base):

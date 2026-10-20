@@ -279,3 +279,27 @@ def test_accept_expired_invitation_rejected(client, db):
     )
 
     assert response.status_code == 409
+
+
+def test_list_invitations_reports_lapsed_invitation_as_expired(client, db):
+    headers = _register_and_login(client, email="owner@example.com")
+    org = _create_org(client, headers)
+    invitation = client.post(
+        _invitations_url(org["id"]),
+        json={"email": "newhire@example.com", "role": "member"},
+        headers=headers,
+    ).json()
+
+    stored = get_invitation_by_token(db, invitation["token"])
+    stored.expires_at = datetime.now(timezone.utc) - timedelta(days=1)
+    db.commit()
+
+    list_response = client.get(_invitations_url(org["id"]), headers=headers)
+    assert list_response.status_code == 200
+    [listed] = list_response.json()
+    assert listed["status"] == "expired"
+
+    # The stored row is untouched — nothing sweeps the table — so the next
+    # read derives the same answer rather than having fixed it in place.
+    db.refresh(stored)
+    assert stored.status.value == "pending"
