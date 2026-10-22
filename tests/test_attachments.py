@@ -9,6 +9,7 @@ from app.core.storage import (
     build_storage_key,
     sanitize_filename,
 )
+from app.services.attachment_service import DEFAULT_CONTENT_TYPE, _normalize_content_type
 
 
 def _register_and_login(
@@ -99,6 +100,29 @@ def test_sanitize_filename(raw, expected):
 
 def test_sanitize_filename_truncates_to_the_column_width():
     assert len(sanitize_filename("a" * 400)) == 255
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (None, DEFAULT_CONTENT_TYPE),
+        ("", DEFAULT_CONTENT_TYPE),
+        ("not-a-media-type", DEFAULT_CONTENT_TYPE),
+        ("text/html plain", DEFAULT_CONTENT_TYPE),
+        ("TEXT/HTML; charset=utf-8", "text/html"),
+        ("application/json", "application/json"),
+    ],
+)
+def test_normalize_content_type_falls_back_on_anything_unsafe(raw, expected):
+    # Rejected forms fall back to the generic default rather than surviving
+    # into a download response's Content-Type header, where a browser would
+    # otherwise render an attacker-supplied value.
+    assert _normalize_content_type(raw) == expected
+
+
+def test_normalize_content_type_truncates_to_the_column_width():
+    oversized = "application/" + "x" * 200
+    assert len(_normalize_content_type(oversized)) == 100
 
 
 def test_storage_keys_are_unique_per_upload():
