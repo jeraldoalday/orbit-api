@@ -57,11 +57,6 @@ def get_entry(db: Session, task_id: uuid.UUID, entry_id: uuid.UUID) -> Optional[
     return db.execute(stmt).scalar_one_or_none()
 
 
-def logged_minutes(db: Session, task_id: uuid.UUID) -> int:
-    stmt = select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(TimeEntry.task_id == task_id)
-    return int(db.execute(stmt).scalar_one())
-
-
 def log_time(
     db: Session,
     task: Task,
