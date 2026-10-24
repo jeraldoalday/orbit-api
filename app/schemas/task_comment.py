@@ -12,6 +12,10 @@ class TaskCommentCreate(BaseModel):
     body: BodyStr
 
 
+class TaskCommentUpdate(BaseModel):
+    body: BodyStr
+
+
 class TaskCommentRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -20,3 +24,6 @@ class TaskCommentRead(BaseModel):
     author: Optional[UserRead]
     body: str
     created_at: datetime
+    # Moves only when the body is edited; there is no separate "edited" flag,
+    # so a client compares the two to show one.
+    updated_at: datetime

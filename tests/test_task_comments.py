@@ -83,6 +83,74 @@ def test_list_comments_with_tied_timestamps_orders_deterministically(client, mon
     assert ids == [c["id"] for c in second_listing]
 
 
+def test_author_can_edit_own_comment(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+    task = _create_task(client, headers, org["id"], project["id"])
+    comment = client.post(
+        f"{_task_base(org['id'], project['id'], task['id'])}/comments",
+        json={"body": "Looks gud"},
+        headers=headers,
+    ).json()
+
+    response = client.patch(
+        f"{_task_base(org['id'], project['id'], task['id'])}/comments/{comment['id']}",
+        json={"body": "Looks good"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["body"] == "Looks good"
+    assert body["created_at"] == comment["created_at"]
+    assert body["updated_at"] > comment["updated_at"]
+
+
+def test_non_author_cannot_edit_comment(client):
+    owner_headers = _register_and_login(client, email="owner@example.com")
+    member_headers = _register_and_login(client, email="member@example.com")
+    org = _create_org(client, owner_headers)
+    client.post(
+        f"/api/v1/organizations/{org['id']}/members",
+        json={"email": "member@example.com", "role": "admin"},
+        headers=owner_headers,
+    )
+    project = _create_project(client, owner_headers, org["id"])
+    task = _create_task(client, owner_headers, org["id"], project["id"])
+    comment = client.post(
+        f"{_task_base(org['id'], project['id'], task['id'])}/comments",
+        json={"body": "Owner's comment"},
+        headers=owner_headers,
+    ).json()
+
+    # Even an org admin cannot rewrite someone else's comment: admins
+    # moderate by deleting, not by editing what was said.
+    response = client.patch(
+        f"{_task_base(org['id'], project['id'], task['id'])}/comments/{comment['id']}",
+        json={"body": "Rewritten"},
+        headers=member_headers,
+    )
+
+    assert response.status_code == 403
+
+
+def test_editing_missing_comment_returns_404(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    project = _create_project(client, headers, org["id"])
+    task = _create_task(client, headers, org["id"], project["id"])
+
+    response = client.patch(
+        f"{_task_base(org['id'], project['id'], task['id'])}/comments/"
+        "00000000-0000-0000-0000-000000000000",
+        json={"body": "Anything"},
+        headers=headers,
+    )
+
+    assert response.status_code == 404
+
+
 def test_author_can_delete_own_comment(client):
     headers = _register_and_login(client)
     org = _create_org(client, headers)

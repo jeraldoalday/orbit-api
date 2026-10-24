@@ -109,6 +109,21 @@ def list_comments(db: Session, task_id: uuid.UUID) -> list[TaskComment]:
     return list(db.execute(stmt).scalars().all())
 
 
+def update_comment(db: Session, comment: TaskComment, body: str) -> TaskComment:
+    """Edit a comment's body in place.
+
+    Unlike a task field, a comment has no change to log on the timeline and
+    nothing new to notify about — editing a typo shouldn't re-fire the mention
+    and watcher fan-out a new comment gets. `updated_at` moves on its own via
+    the model's `onupdate`, which is what tells a reader the comment was
+    edited at all.
+    """
+    comment.body = body
+    db.commit()
+    db.refresh(comment)
+    return comment
+
+
 def delete_comment(db: Session, comment: TaskComment) -> None:
     db.delete(comment)
     db.commit()
