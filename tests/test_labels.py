@@ -189,6 +189,90 @@ def test_list_labels_paginates_with_limit_and_offset(client):
     assert names == ["Bravo", "Charlie"]
 
 
+def test_admin_can_rename_and_recolor_label(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    label = client.post(_labels_url(org["id"]), json={"name": "Bug"}, headers=headers).json()
+
+    response = client.patch(
+        _labels_url(org["id"], f"/{label['id']}"),
+        json={"name": "Defect", "color": "#ff0000"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["name"] == "Defect"
+    assert body["color"] == "#ff0000"
+
+
+def test_rename_label_keeps_its_own_name_case_unchanged(client):
+    """Renaming a label to the same name it already has (perhaps with a
+    different color) must not reject itself as a case-insensitive duplicate.
+    """
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    label = client.post(_labels_url(org["id"]), json={"name": "Bug"}, headers=headers).json()
+
+    response = client.patch(
+        _labels_url(org["id"], f"/{label['id']}"),
+        json={"name": "Bug", "color": "#00ff00"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["color"] == "#00ff00"
+
+
+def test_rename_label_to_existing_name_rejected_case_insensitively(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    client.post(_labels_url(org["id"]), json={"name": "Bug"}, headers=headers)
+    feature = client.post(
+        _labels_url(org["id"]), json={"name": "Feature"}, headers=headers
+    ).json()
+
+    response = client.patch(
+        _labels_url(org["id"], f"/{feature['id']}"), json={"name": "bug"}, headers=headers
+    )
+
+    assert response.status_code == 409
+
+
+def test_member_cannot_rename_label(client):
+    owner_headers = _register_and_login(client, email="owner@example.com")
+    member_headers = _register_and_login(client, email="member@example.com")
+    org = _create_org(client, owner_headers)
+    client.post(
+        f"/api/v1/organizations/{org['id']}/members",
+        json={"email": "member@example.com", "role": "member"},
+        headers=owner_headers,
+    )
+    label = client.post(_labels_url(org["id"]), json={"name": "Bug"}, headers=owner_headers).json()
+
+    response = client.patch(
+        _labels_url(org["id"], f"/{label['id']}"),
+        json={"name": "Defect"},
+        headers=member_headers,
+    )
+
+    assert response.status_code == 403
+
+
+def test_update_label_rejects_invalid_color(client):
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    label = client.post(_labels_url(org["id"]), json={"name": "Bug"}, headers=headers).json()
+
+    response = client.patch(
+        _labels_url(org["id"], f"/{label['id']}"),
+        json={"color": "not-a-color"},
+        headers=headers,
+    )
+
+    assert response.status_code == 422
+
+
 def test_member_cannot_delete_label(client):
     owner_headers = _register_and_login(client, email="owner@example.com")
     member_headers = _register_and_login(client, email="member@example.com")

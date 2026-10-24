@@ -12,8 +12,14 @@ from app.db.session import get_db
 from app.models.label import Label
 from app.models.membership import Membership, MembershipRole
 from app.models.organization import Organization
-from app.schemas.label import LabelCreate, LabelRead
-from app.services.label_service import DuplicateLabelError, create_label, delete_label, list_labels
+from app.schemas.label import LabelCreate, LabelRead, LabelUpdate
+from app.services.label_service import (
+    DuplicateLabelError,
+    create_label,
+    delete_label,
+    list_labels,
+    update_label,
+)
 
 settings = get_settings()
 
@@ -42,6 +48,19 @@ def list_mine(
     offset: int = Query(default=0, ge=0),
 ) -> list[LabelRead]:
     return list_labels(db, organization.id, limit=limit, offset=offset)
+
+
+@router.patch("/{label_id}", response_model=LabelRead)
+def update(
+    label_in: LabelUpdate,
+    db: Session = Depends(get_db),
+    label: Label = Depends(get_label_or_404),
+    _membership: Membership = Depends(require_org_role(MembershipRole.ADMIN)),
+) -> LabelRead:
+    try:
+        return update_label(db, label, name=label_in.name, color=label_in.color)
+    except DuplicateLabelError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.delete("/{label_id}", status_code=status.HTTP_204_NO_CONTENT)

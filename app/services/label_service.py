@@ -42,6 +42,38 @@ def create_label(db: Session, organization: Organization, name: str, color: str)
     return label
 
 
+def update_label(
+    db: Session, label: Label, *, name: Optional[str] = None, color: Optional[str] = None
+) -> Label:
+    """Rename and/or recolor a label in place.
+
+    Renaming goes through the same case-insensitive duplicate check as
+    creating one, excluding the label's own current row — otherwise setting
+    a name to the case it already has would reject itself as a duplicate.
+    """
+    if name is not None:
+        name = name.strip()
+        existing = _find_by_name_ci(db, label.organization_id, name)
+        if existing is not None and existing.id != label.id:
+            raise DuplicateLabelError(
+                f"A label named {name!r} already exists in this organization"
+            )
+        label.name = name
+
+    if color is not None:
+        label.color = color
+
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise DuplicateLabelError(
+            f"A label named {name!r} already exists in this organization"
+        ) from exc
+    db.refresh(label)
+    return label
+
+
 def get_label(db: Session, org_id: uuid.UUID, label_id: uuid.UUID) -> Optional[Label]:
     stmt = select(Label).where(Label.id == label_id, Label.organization_id == org_id)
     return db.execute(stmt).scalar_one_or_none()
