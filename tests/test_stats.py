@@ -83,6 +83,7 @@ def test_empty_project_reports_zeroes_not_nulls(client, setup):
     assert body["tasks"]["by_status"] == {"todo": 0, "in_progress": 0, "done": 0}
     assert set(body["tasks"]["by_priority"]) == {"low", "medium", "high", "urgent"}
     assert body["by_assignee"] == []
+    assert body["by_milestone"] == []
 
 
 def test_status_and_priority_breakdown(client, setup):
@@ -180,6 +181,33 @@ def test_assignee_breakdown_keeps_the_unassigned_bucket(client, setup):
     assert by_id[member["id"]] == {
         "assignee_id": member["id"],
         "email": "member@example.com",
+        "total": 2,
+        "done": 1,
+    }
+    assert by_id[None]["total"] == 1
+    assert sum(row["total"] for row in breakdown) == 3
+
+
+def test_milestone_breakdown_keeps_the_unfiled_bucket(client, setup):
+    headers, org_id, project_id = setup
+    milestone = client.post(
+        f"/api/v1/organizations/{org_id}/projects/{project_id}/milestones",
+        json={"name": "Beta"},
+        headers=headers,
+    ).json()
+    first = _create_task(
+        client, headers, org_id, project_id, title="Filed", milestone_id=milestone["id"]
+    )
+    _create_task(client, headers, org_id, project_id, title="Also", milestone_id=milestone["id"])
+    _create_task(client, headers, org_id, project_id, title="Unfiled")
+    _set_status(client, headers, org_id, project_id, first["id"], "done")
+
+    breakdown = _project_stats(client, headers, org_id, project_id).json()["by_milestone"]
+
+    by_id = {row["milestone_id"]: row for row in breakdown}
+    assert by_id[milestone["id"]] == {
+        "milestone_id": milestone["id"],
+        "name": "Beta",
         "total": 2,
         "done": 1,
     }

@@ -40,11 +40,22 @@ class ProjectSummary(BaseModel):
     done: int
 
 
+class MilestoneStats(BaseModel):
+    # Null for the unfiled bucket, for the same reason AssigneeStats' is: the
+    # rows have to add up to total, and a task with no milestone is still a
+    # task.
+    milestone_id: Optional[uuid.UUID]
+    name: Optional[str]
+    total: int
+    done: int
+
+
 class ProjectStats(BaseModel):
     project_id: uuid.UUID
     name: str
     tasks: TaskStats
     by_assignee: list[AssigneeStats]
+    by_milestone: list[MilestoneStats]
 
 
 class OrganizationStats(BaseModel):

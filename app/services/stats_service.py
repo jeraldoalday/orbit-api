@@ -15,12 +15,14 @@ from sqlalchemy.orm import Session, aliased
 
 from app.core.progress import completion_rate
 from app.models.membership import Membership
+from app.models.milestone import Milestone
 from app.models.project import Project
 from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.task_dependency import TaskDependency
 from app.models.user import User
 from app.schemas.stats import (
     AssigneeStats,
+    MilestoneStats,
     OrganizationStats,
     ProjectStats,
     ProjectSummary,
@@ -146,6 +148,35 @@ def _assignee_breakdown(
     ]
 
 
+def _milestone_breakdown(db: Session, project_id: uuid.UUID) -> list[MilestoneStats]:
+    """A project's live task counts, grouped by the milestone they're filed under.
+
+    Milestones are scoped to one project, so this has no organization-wide
+    counterpart the way `_assignee_breakdown` does - a milestone id would mean
+    nothing without the project beside it.
+    """
+    done_count = func.sum(case((Task.status == TaskStatus.DONE, 1), else_=0))
+    stmt = (
+        select(Task.milestone_id, Milestone.name, func.count(), done_count)
+        .select_from(Task)
+        # Outer, so the unfiled bucket survives as a null-id row rather than
+        # disappearing from a breakdown that is supposed to add up to the total.
+        .outerjoin(Milestone, Milestone.id == Task.milestone_id)
+        .where(Task.project_id == project_id, _live_tasks())
+        .group_by(Task.milestone_id, Milestone.name)
+        .order_by(func.count().desc(), Milestone.name)
+    )
+    return [
+        MilestoneStats(
+            milestone_id=row[0],
+            name=row[1],
+            total=row[2],
+            done=int(row[3] or 0),
+        )
+        for row in db.execute(stmt).all()
+    ]
+
+
 def project_stats(db: Session, project: Project, *, now: Optional[datetime] = None) -> ProjectStats:
     scope = [Task.project_id == project.id, _live_tasks()]
     return ProjectStats(
@@ -153,6 +184,7 @@ def project_stats(db: Session, project: Project, *, now: Optional[datetime] = No
         name=project.name,
         tasks=task_stats(db, scope, now=now),
         by_assignee=_assignee_breakdown(db, scope, joins_project=False),
+        by_milestone=_milestone_breakdown(db, project.id),
     )
 
 
