@@ -55,9 +55,7 @@ def update_label(
         name = name.strip()
         existing = _find_by_name_ci(db, label.organization_id, name)
         if existing is not None and existing.id != label.id:
-            raise DuplicateLabelError(
-                f"A label named {name!r} already exists in this organization"
-            )
+            raise DuplicateLabelError(f"A label named {name!r} already exists in this organization")
         label.name = name
 
     if color is not None:

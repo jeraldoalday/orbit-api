@@ -228,9 +228,7 @@ def test_rename_label_to_existing_name_rejected_case_insensitively(client):
     headers = _register_and_login(client)
     org = _create_org(client, headers)
     client.post(_labels_url(org["id"]), json={"name": "Bug"}, headers=headers)
-    feature = client.post(
-        _labels_url(org["id"]), json={"name": "Feature"}, headers=headers
-    ).json()
+    feature = client.post(_labels_url(org["id"]), json={"name": "Feature"}, headers=headers).json()
 
     response = client.patch(
         _labels_url(org["id"], f"/{feature['id']}"), json={"name": "bug"}, headers=headers
