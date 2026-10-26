@@ -27,6 +27,7 @@ class WebhookEvent(str, enum.Enum):
     TASK_DELETED = "task.deleted"
     TASK_ASSIGNED = "task.assigned"
     COMMENT_CREATED = "comment.created"
+    COMMENT_DELETED = "comment.deleted"
 
 
 class DeliveryStatus(str, enum.Enum):

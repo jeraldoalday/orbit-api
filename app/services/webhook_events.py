@@ -69,6 +69,7 @@ def emit_comment_event(
     comment: TaskComment,
     actor: Optional[User] = None,
     *,
+    event: WebhookEvent = WebhookEvent.COMMENT_CREATED,
     commit: bool = False,
 ) -> None:
     data = {
@@ -80,4 +81,4 @@ def emit_comment_event(
             "author_id": str(comment.author_id) if comment.author_id else None,
         },
     }
-    enqueue_event(db, project.organization_id, WebhookEvent.COMMENT_CREATED, data, commit=commit)
+    enqueue_event(db, project.organization_id, event, data, commit=commit)

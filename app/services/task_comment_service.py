@@ -9,6 +9,7 @@ from app.models.project import Project
 from app.models.task import Task
 from app.models.task_comment import TaskComment
 from app.models.user import User
+from app.models.webhook import WebhookEvent
 from app.services.auth_service import get_user_by_email
 from app.services.notification_service import create_notification, extract_mentions
 from app.services.project_member_service import can_see_project
@@ -124,6 +125,15 @@ def update_comment(db: Session, comment: TaskComment, body: str) -> TaskComment:
     return comment
 
 
-def delete_comment(db: Session, comment: TaskComment) -> None:
+def delete_comment(
+    db: Session, project: Project, task: Task, comment: TaskComment, actor: User
+) -> None:
+    """Delete a comment and tell subscribers it's gone.
+
+    The event is queued before the row is: the payload has to be captured
+    while the comment still exists, the same reason task deletion's event
+    carries the task's final state rather than nothing at all.
+    """
+    emit_comment_event(db, project, task, comment, actor, event=WebhookEvent.COMMENT_DELETED)
     db.delete(comment)
     db.commit()

@@ -88,6 +88,7 @@ def update(
 def delete(
     comment_id: uuid.UUID,
     db: Session = Depends(get_db),
+    project: Project = Depends(get_project_or_404),
     task: Task = Depends(get_task_or_404),
     membership: Membership = Depends(require_org_member),
     _role: ProjectRole = Depends(require_project_role(ProjectRole.VIEWER)),
@@ -103,7 +104,7 @@ def delete(
             detail="Insufficient permissions for this organization",
         )
 
-    delete_comment(db, comment)
+    delete_comment(db, project, task, comment, current_user)
 
 
 @router.get("/timeline", response_model=list[TaskTimelineEntry])

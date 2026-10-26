@@ -48,6 +48,7 @@ ALL_EVENTS = [
     "task.deleted",
     "task.assigned",
     "comment.created",
+    "comment.deleted",
 ]
 
 
@@ -197,6 +198,30 @@ def test_commenting_queues_comment_created(client, setup):
     assert _events() == ["task.created", "comment.created"]
     comment = _deliveries()[1].payload["data"]["comment"]
     assert comment["body"] == "Looks good"
+
+
+def test_deleting_a_comment_queues_comment_deleted_with_its_final_state(client, setup):
+    headers, org, project = setup
+    _subscribe(client, headers, org["id"])
+    task = client.post(
+        _tasks_url(org["id"], project["id"]), json={"title": "Ship it"}, headers=headers
+    ).json()
+    comment = client.post(
+        _tasks_url(org["id"], project["id"], f"/{task['id']}/comments"),
+        json={"body": "Looks good"},
+        headers=headers,
+    ).json()
+
+    client.delete(
+        _tasks_url(org["id"], project["id"], f"/{task['id']}/comments/{comment['id']}"),
+        headers=headers,
+    )
+
+    assert _events() == ["task.created", "comment.created", "comment.deleted"]
+    # The payload has to be captured before the row goes away.
+    deleted = _deliveries()[2].payload["data"]["comment"]
+    assert deleted["id"] == comment["id"]
+    assert deleted["body"] == "Looks good"
 
 
 def test_an_inactive_subscription_receives_nothing(client, setup):
