@@ -174,3 +174,23 @@ def test_address_is_deliverable_matches_the_validation_rules():
     assert not address_is_deliverable("127.0.0.1")
     assert not address_is_deliverable("10.0.0.1")
     assert not address_is_deliverable(None)
+
+
+# --- real DNS resolution (no monkeypatching) --------------------------------
+#
+# Every test above replaces _resolved_addresses, since a unit test should not
+# depend on the network. These two exercise the real resolver against names
+# that settle without it: "localhost" is answered by the hosts file on any
+# machine, and a ".invalid" name is guaranteed by RFC 2606 to never resolve.
+
+
+def test_resolving_localhost_returns_its_loopback_address():
+    from app.core.webhook_url import resolve_primary_address
+
+    assert resolve_primary_address("http://localhost/hook") in ("127.0.0.1", "::1")
+
+
+def test_resolving_an_invalid_name_returns_none_instead_of_raising():
+    from app.core.webhook_url import resolve_primary_address
+
+    assert resolve_primary_address("http://this.name.does.not.exist.invalid/hook") is None
