@@ -189,6 +189,28 @@ def test_editor_can_remove_someone_elses_watch(client, setup):
     assert response.status_code == 204
 
 
+def test_a_viewer_cannot_remove_someone_elses_watch(client, setup):
+    owner_headers, member_headers, org_id, project_id, task_id = setup
+    client.patch(
+        f"/api/v1/organizations/{org_id}/projects/{project_id}",
+        json={"visibility": "restricted"},
+        headers=owner_headers,
+    )
+    client.post(
+        f"/api/v1/organizations/{org_id}/projects/{project_id}/members",
+        json={"email": "member@example.com", "role": "viewer"},
+        headers=owner_headers,
+    )
+    owner = _me(client, owner_headers)
+    client.post(_watchers_url(org_id, project_id, task_id), headers=owner_headers)
+
+    response = client.delete(
+        _watchers_url(org_id, project_id, task_id, f"/{owner['id']}"), headers=member_headers
+    )
+
+    assert response.status_code == 403
+
+
 def test_watchers_require_authentication(client, setup):
     owner_headers, member_headers, org_id, project_id, task_id = setup
 
