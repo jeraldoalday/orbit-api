@@ -133,6 +133,20 @@ def test_a_formula_looking_title_is_defused(client, setup):
     assert dict(zip(_header, row))["title"] == "'=HYPERLINK(1,2)"
 
 
+@pytest.mark.parametrize("prefix", ["+", "-", "@", "\t", "\r"])
+def test_other_formula_prefixes_are_also_defused(client, setup, prefix):
+    """= isn't the only character a spreadsheet treats a cell's formula as
+    starting with. Using the description rather than the title: unlike the
+    title, it isn't stripped of leading whitespace, so this also covers the
+    tab/carriage-return prefixes a title could never carry."""
+    headers, org_id, project_id = setup
+    _create_task(client, headers, org_id, project_id, description=f"{prefix}SUM(1,2)")
+
+    _header, row = _rows(client.get(_export_url(org_id, project_id), headers=headers))
+
+    assert dict(zip(_header, row))["description"] == f"'{prefix}SUM(1,2)"
+
+
 def test_commas_and_quotes_survive_a_round_trip(client, setup):
     headers, org_id, project_id = setup
     _create_task(
