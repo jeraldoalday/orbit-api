@@ -247,11 +247,11 @@ reproduce what is on screen sends people back to copying rows by hand. Each row
 carries the assignee, milestone, labels, estimate and minutes logged, gathered
 in one query each rather than per row.
 
-Cells starting with `=`, `+`, `-` or `@` are prefixed with an apostrophe: every
-spreadsheet application runs them as formulas, which makes a task title a code
-injection vector into whoever opens the file. Reading a project is enough to
-export it — the file holds what the caller can already page through — and
-`EXPORT_MAX_ROWS` bounds one request.
+Cells starting with `=`, `+`, `-`, `@`, a tab or a carriage return are prefixed
+with an apostrophe: every spreadsheet application runs them as formulas, which
+makes a task title or description a code injection vector into whoever opens
+the file. Reading a project is enough to export it — the file holds what the
+caller can already page through — and `EXPORT_MAX_ROWS` bounds one request.
 
 ### Attachment storage
 
