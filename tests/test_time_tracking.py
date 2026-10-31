@@ -145,6 +145,40 @@ def test_an_absurd_duration_is_refused(client, setup):
     assert _log(client, owner_headers, url, 0).status_code == 422
 
 
+def test_updating_an_entrys_date_to_the_future_is_refused(client, setup):
+    owner_headers, _member, org_id, project_id, task_id = setup
+    url = _time_url(org_id, project_id, task_id)
+    entry = _log(client, owner_headers, url, 45).json()
+
+    response = client.patch(
+        f"{url}/{entry['id']}",
+        json={"spent_on": (date.today() + timedelta(days=1)).isoformat()},
+        headers=owner_headers,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Work cannot be logged against a future date"
+
+
+def test_sending_an_explicit_null_leaves_minutes_and_date_unchanged(client, setup):
+    """`minutes` and `spent_on` have no null meaning, unlike `note`."""
+    owner_headers, _member, org_id, project_id, task_id = setup
+    url = _time_url(org_id, project_id, task_id)
+    original_day = (date.today() - timedelta(days=2)).isoformat()
+    entry = _log(client, owner_headers, url, 45, spent_on=original_day).json()
+
+    response = client.patch(
+        f"{url}/{entry['id']}",
+        json={"minutes": None, "spent_on": None, "note": "kept the original minutes and date"},
+        headers=owner_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["minutes"] == 45
+    assert response.json()["spent_on"] == original_day
+    assert response.json()["note"] == "kept the original minutes and date"
+
+
 def test_an_author_can_correct_their_own_entry(client, setup):
     _owner, member_headers, org_id, project_id, task_id = setup
     url = _time_url(org_id, project_id, task_id)
@@ -266,6 +300,23 @@ def test_the_report_can_be_narrowed_to_a_date_range(client, setup):
 
     assert report["logged_minutes"] == 20
     assert report["spent_to"] is None
+
+
+def test_the_report_can_be_narrowed_by_an_upper_bound_alone(client, setup):
+    owner_headers, _member, org_id, project_id, task_id = setup
+    url = _time_url(org_id, project_id, task_id)
+    old = (date.today() - timedelta(days=30)).isoformat()
+    _log(client, owner_headers, url, 100, spent_on=old)
+    _log(client, owner_headers, url, 20, spent_on=date.today().isoformat())
+
+    report = client.get(
+        _report_url(org_id, project_id),
+        params={"spent_to": (date.today() - timedelta(days=7)).isoformat()},
+        headers=owner_headers,
+    ).json()
+
+    assert report["logged_minutes"] == 100
+    assert report["spent_from"] is None
 
 
 def test_a_backwards_date_range_is_refused(client, setup):
