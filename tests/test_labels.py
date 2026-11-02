@@ -138,6 +138,37 @@ def test_create_label_turns_a_lost_race_into_duplicate_label_error(client, db, m
     assert names == ["Bug"]
 
 
+def test_update_label_turns_a_lost_race_into_duplicate_label_error(client, db, monkeypatch):
+    """The mirror of the create-time race test above: `update_label`'s own
+    pre-check is forced to miss a name that another request committed in the
+    gap between this call's check and its own commit, and the resulting
+    IntegrityError must come out as the ordinary DuplicateLabelError rather
+    than an unhandled database error — leaving the session usable and the
+    label's own row untouched.
+    """
+    headers = _register_and_login(client)
+    org = _create_org(client, headers)
+    org_id = uuid.UUID(org["id"])
+
+    bug = client.post(_labels_url(org["id"]), json={"name": "Bug"}, headers=headers).json()
+    db.add(Label(organization_id=org_id, name="Feature", color="#888888"))
+    db.commit()
+    feature = db.execute(
+        select(Label).where(Label.organization_id == org_id, Label.name == "Feature")
+    ).scalar_one()
+
+    monkeypatch.setattr(label_service, "_find_by_name_ci", lambda *_args, **_kwargs: None)
+
+    with pytest.raises(label_service.DuplicateLabelError):
+        label_service.update_label(db, feature, name="bug")
+
+    names = sorted(
+        db.execute(select(Label.name).where(Label.organization_id == org_id)).scalars().all()
+    )
+    assert names == ["Bug", "Feature"]
+    assert bug["name"] == "Bug"
+
+
 def test_same_label_name_allowed_in_different_orgs(client):
     headers = _register_and_login(client)
     org_a = _create_org(client, headers, name="Org A")
