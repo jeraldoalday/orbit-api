@@ -146,6 +146,37 @@ def test_the_shutdown_flag_starts_clear_and_latches():
     assert flag.stopping is True
 
 
+def test_main_wires_sigterm_and_sigint_to_the_shutdown_flag_and_runs_forever(monkeypatch):
+    """main() is the one piece of worker.py no other test touches: it has to
+    register both signals against the same flag it then hands to run_forever,
+    or a real SIGTERM/SIGINT would have nothing to latch."""
+    import signal
+
+    registered = {}
+
+    def _signal(sig, handler):
+        registered[sig] = handler
+
+    monkeypatch.setattr(signal, "signal", _signal)
+    monkeypatch.setattr(worker, "configure_logging", lambda level: None)
+
+    captured = {}
+
+    def _run_forever(flag=None):
+        captured["flag"] = flag
+
+    monkeypatch.setattr(worker, "run_forever", _run_forever)
+
+    worker.main()
+
+    assert registered[signal.SIGTERM] == registered[signal.SIGINT]
+    flag = captured["flag"]
+    assert flag is not None and flag.stopping is False
+    # The same flag the signal handlers were registered against.
+    registered[signal.SIGTERM](15, None)
+    assert flag.stopping is True
+
+
 def test_httpx_transport_wraps_client_errors(monkeypatch):
     import httpx
 
